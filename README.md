@@ -64,7 +64,6 @@ The easiest way to run the service is using Docker.
 | `GITLAB_BRANCH` | The branch where workflows are stored. | `main` |
 | `GITLAB_WORKFLOWS_PATH` | The subdirectory in the repo containing `.yaml` files. | `.` (Root) |
 | `PORT` | The port the service runs on inside the container. | `3000` |
-| `ARGO_SERVER_URL` | URL of the Argo Server API (e.g. `https://argo-workflows...`). | - |
 | `LOG_VIEWER_URL` | Internal or external URL for the Loki Log Viewer API. | `https://hub-otc.eox.at/...` |
 | `LOKI_URL` | Internal URL for the Loki API. | `http://loki:3100` |
 | `LOKI_NAMESPACE_LABEL` | Label key for namespace in Loki. | `namespace` |
