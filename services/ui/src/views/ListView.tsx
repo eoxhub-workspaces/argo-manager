@@ -32,6 +32,7 @@ import {
 import toast from "react-hot-toast";
 import Spinner from "../components/global/Spinner";
 import { NewWorkflowModal } from "../components/modals/NewWorkflowModal";
+import { SubmitWorkflowModal } from "../components/modals/SubmitWorkflowModal";
 
 interface WorkflowMetadata {
   kind?: string;
@@ -58,6 +59,7 @@ const ListView: React.FC = () => {
   const [newModalMode, setNewModalMode] = useState<"code" | "canvas" | null>(
     null
   );
+  const [executingWorkflow, setExecutingWorkflow] = useState<any | null>(null);
 
   useEffect(() => {
     const handleGlobalClick = (e: MouseEvent) => {
@@ -91,16 +93,35 @@ const ListView: React.FC = () => {
     setNewModalMode(null);
   };
 
-  const handleExecute = async (path: string) => {
+  const executeWorkflow = async (workflow: any) => {
     const executeToast = toast.loading("Submitting workflow...");
     try {
-      const content = await getWorkflow(path);
-      const parsed = YAML.parse(content);
-      await submitExecution(parsed);
+      await submitExecution(workflow);
       toast.success("Workflow submitted successfully!", { id: executeToast });
+      setExecutingWorkflow(null);
       navigate("/executions");
     } catch (err: any) {
       toast.error(`Failed to submit: ${err.message}`, { id: executeToast });
+    }
+  };
+
+  const handleExecute = async (path: string) => {
+    const fetchToast = toast.loading("Preparing workflow...");
+    try {
+      const content = await getWorkflow(path);
+      const parsed = YAML.parse(content);
+      toast.dismiss(fetchToast);
+
+      const params = parsed?.spec?.arguments?.parameters || [];
+      if (params.length > 0) {
+        setExecutingWorkflow(parsed);
+      } else {
+        await executeWorkflow(parsed);
+      }
+    } catch (err: any) {
+      toast.error(`Failed to prepare workflow: ${err.message}`, {
+        id: fetchToast
+      });
     }
   };
 
@@ -240,6 +261,13 @@ const ListView: React.FC = () => {
         <NewWorkflowModal
           onClose={() => setNewModalMode(null)}
           onSubmit={handleCreateNew}
+        />
+      )}
+      {executingWorkflow && (
+        <SubmitWorkflowModal
+          workflow={executingWorkflow}
+          onClose={() => setExecutingWorkflow(null)}
+          onSubmit={executeWorkflow}
         />
       )}
       <header className="bg-white border-b border-gray-200 px-8 py-4 flex justify-between items-center flex-shrink-0 z-10 shadow-sm">

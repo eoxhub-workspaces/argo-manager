@@ -44,6 +44,7 @@ import * as api from "../../utils/api";
 import generateSteppedManifest from "../../utils/generators/step";
 import { validateK8sYaml } from "../../utils/k8sValidation";
 import { DefaultIngestionModal } from "../modals/DefaultIngestionModal";
+import { SubmitWorkflowModal } from "../modals/SubmitWorkflowModal";
 
 export default function Project() {
   const { height } = useWindowDimensions();
@@ -64,6 +65,7 @@ export default function Project() {
   const [runAfterSaveAction, setRunAfterSaveAction] = useState(false);
   const [pendingManifest, setPendingManifest] = useState<any>(null);
   const [pendingSyncToken, setPendingSyncToken] = useState<string | null>(null);
+  const [executingWorkflow, setExecutingWorkflow] = useState<any | null>(null);
   const [templateToEdit, setTemplateToEdit] = useState<ITemplateNode | null>(
     null
   );
@@ -188,6 +190,20 @@ export default function Project() {
     executeSave(false, manifestToSave, pendingSyncToken, runAfterSaveAction);
   };
 
+  const finalizeSubmission = async (workflow: any) => {
+    const submitToast = toast.loading("Submitting execution...");
+    try {
+      await api.submitExecution(workflow);
+      toast.success("Execution submitted successfully!", { id: submitToast });
+      setExecutingWorkflow(null);
+      navigate("/executions");
+    } catch (error: any) {
+      toast.error(`Submission failed: ${error.message || "Unknown error"}`, {
+        id: submitToast
+      });
+    }
+  };
+
   const executeSave = async (
     applyDefaults: boolean,
     manifest: any,
@@ -200,6 +216,8 @@ export default function Project() {
     const saveToast = toast.loading(
       runAfterSave ? "Saving and preparing run..." : "Saving workflow..."
     );
+
+    let finalManifest = manifest;
 
     try {
       if (runAfterSave && syncToken) {
@@ -229,6 +247,18 @@ export default function Project() {
 
       setShowIngestionModal(false);
 
+      if (applyDefaults) {
+        try {
+          const rawYaml = await api.getWorkflow(name);
+          finalManifest = YAML.parse(rawYaml);
+        } catch (e) {
+          console.error(
+            "Failed to re-fetch workflow after applying defaults",
+            e
+          );
+        }
+      }
+
       if (runAfterSave && syncToken) {
         toast.loading("Waiting for GitOps reconciliation...", {
           id: saveToast
@@ -253,10 +283,33 @@ export default function Project() {
         }
 
         if (synced) {
-          toast.loading("Submitting workflow...", { id: saveToast });
-          await api.submitExecution(manifest);
-          toast.success("Workflow saved and submitted!", { id: saveToast });
-          navigate("/executions");
+          toast.dismiss(saveToast);
+
+          let parsed = finalManifest;
+          if (parsed.kind === "CronWorkflow") {
+            parsed = {
+              apiVersion: parsed.apiVersion || "argoproj.io/v1alpha1",
+              kind: "Workflow",
+              metadata: {
+                generateName: (parsed.metadata.name || "cron") + "-",
+                namespace: parsed.metadata.namespace,
+                labels: {
+                  ...parsed.metadata.labels,
+                  "workflows.argoproj.io/cron-workflow": parsed.metadata.name,
+                  "workflows.argoproj.io/workflow-template":
+                    parsed.metadata.name
+                }
+              },
+              spec: parsed.spec?.workflowSpec || {}
+            };
+          }
+
+          const params = parsed?.spec?.arguments?.parameters || [];
+          if (params.length > 0) {
+            setExecutingWorkflow(parsed);
+          } else {
+            await finalizeSubmission(parsed);
+          }
         } else {
           toast.error(
             "Workflow saved but GitOps reconciliation timed out. You may need to run it manually.",
@@ -743,6 +796,14 @@ export default function Project() {
         <DefaultIngestionModal
           onConfirm={handleIngestionConfirm}
           onDecline={handleIngestionDecline}
+        />
+      )}
+
+      {executingWorkflow && (
+        <SubmitWorkflowModal
+          workflow={executingWorkflow}
+          onClose={() => setExecutingWorkflow(null)}
+          onSubmit={finalizeSubmission}
         />
       )}
 

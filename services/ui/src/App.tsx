@@ -7,6 +7,7 @@ import CodeProject from "./components/CodeProject";
 import ListView from "./views/ListView";
 import HistoryView from "./views/HistoryView";
 import ExecutionsView from "./views/ExecutionsView";
+import ResourcesView from "./views/ResourcesView";
 import MainLayout from "./components/MainLayout";
 
 import { lightTheme } from "./utils/theme";
@@ -59,6 +60,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ListView />} />
           <Route path="/executions" element={<ExecutionsView />} />
+          <Route path="/resources" element={<ResourcesView />} />
           <Route path="/new/:mode" element={<ModeDispatcher />} />
           <Route path="/edit/:mode/:filename" element={<ModeDispatcher />} />
           <Route path="/history/:filename" element={<HistoryView />} />

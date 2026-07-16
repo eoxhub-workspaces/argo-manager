@@ -16,6 +16,7 @@ import { useTitle } from "../../hooks";
 import Header from "../Project/Header";
 import CodeEditor from "../CodeEditor";
 import { DefaultIngestionModal } from "../modals/DefaultIngestionModal";
+import { SubmitWorkflowModal } from "../modals/SubmitWorkflowModal";
 
 export default function CodeProject() {
   const { filename } = useParams<{ filename?: string }>();
@@ -40,6 +41,7 @@ export default function CodeProject() {
     filename ? "runs" : null
   );
   const [showIngestionModal, setShowIngestionModal] = useState(false);
+  const [executingWorkflow, setExecutingWorkflow] = useState<any | null>(null);
 
   useTitle([currentFilename || "New workflow", "Code Mode"].join(" | "));
 
@@ -202,6 +204,21 @@ spec:
     }
   };
 
+  const finalizeSubmission = async (workflow: any) => {
+    const submitToast = toast.loading("Submitting execution...");
+    try {
+      await api.submitExecution(workflow);
+      toast.success("Execution submitted successfully!", { id: submitToast });
+      setExecutingWorkflow(null);
+      if (activePanel !== "runs") setActivePanel("runs");
+      setTimeout(fetchExecutions, 1000);
+    } catch (error: any) {
+      toast.error(`Submission failed: ${error.message || "Unknown error"}`, {
+        id: submitToast
+      });
+    }
+  };
+
   const executeSave = async (
     applyDefaults: boolean,
     contentToSave: string,
@@ -211,6 +228,8 @@ spec:
     if (!name) return;
 
     const saveToast = toast.loading("Saving workflow...");
+    let finalContent = contentToSave;
+
     try {
       if (!isNewWorkflow) {
         await api.updateWorkflow(
@@ -233,9 +252,24 @@ spec:
       toast.success("Workflow saved successfully!", { id: saveToast });
       setShowIngestionModal(false);
 
+      fetchHistory();
+
+      if (applyDefaults) {
+        try {
+          // Re-fetch the content to get the backend-injected defaults
+          finalContent = await api.getWorkflow(name);
+          setYamlContent(finalContent);
+        } catch (e) {
+          console.error(
+            "Failed to re-fetch workflow after applying defaults",
+            e
+          );
+        }
+      }
+
       if (runAfterSave) {
         try {
-          let parsed = YAML.parse(contentToSave);
+          let parsed = YAML.parse(finalContent);
 
           // If it's a CronWorkflow, we must extract the workflowSpec to run it immediately
           if (parsed.kind === "CronWorkflow") {
@@ -256,10 +290,12 @@ spec:
             };
           }
 
-          await api.submitExecution(parsed);
-          toast.success("Workflow executed successfully!");
-          if (activePanel !== "runs") setActivePanel("runs");
-          setTimeout(fetchExecutions, 1000);
+          const params = parsed?.spec?.arguments?.parameters || [];
+          if (params.length > 0) {
+            setExecutingWorkflow(parsed);
+          } else {
+            await finalizeSubmission(parsed);
+          }
         } catch (err: any) {
           toast.error(`Execution failed: ${err.message || "Unknown error"}`);
         }
@@ -492,6 +528,13 @@ spec:
         <DefaultIngestionModal
           onConfirm={handleIngestionConfirm}
           onDecline={handleIngestionDecline}
+        />
+      )}
+      {executingWorkflow && (
+        <SubmitWorkflowModal
+          workflow={executingWorkflow}
+          onClose={() => setExecutingWorkflow(null)}
+          onSubmit={finalizeSubmission}
         />
       )}
     </div>

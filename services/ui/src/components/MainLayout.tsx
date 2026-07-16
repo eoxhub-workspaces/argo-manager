@@ -2,12 +2,14 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   ClipboardDocumentListIcon,
-  PlayIcon
+  PlayIcon,
+  ChartBarIcon
 } from "@heroicons/react/24/outline";
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const isExecutions = location.pathname.startsWith("/executions");
+  const isResources = location.pathname.startsWith("/resources");
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -19,7 +21,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 <Link
                   to="/"
                   className={`${
-                    !isExecutions
+                    !isExecutions && !isResources
                       ? "border-[#004170] text-gray-900"
                       : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
                   } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-all`}
@@ -37,6 +39,17 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 >
                   <PlayIcon className="h-5 w-5 mr-2" />
                   Workflow Executions
+                </Link>
+                <Link
+                  to="/resources"
+                  className={`${
+                    isResources
+                      ? "border-[#004170] text-gray-900"
+                      : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-all`}
+                >
+                  <ChartBarIcon className="h-5 w-5 mr-2" />
+                  Resources Dashboard
                 </Link>
               </div>
             </div>

@@ -104,6 +104,7 @@ export interface WorkflowExecution {
     startedAt: string;
     finishedAt?: string;
     nodes?: Record<string, any>;
+    resourcesDuration?: Record<string, number>;
   };
   spec: any;
 }
