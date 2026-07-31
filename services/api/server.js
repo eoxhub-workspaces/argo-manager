@@ -1115,6 +1115,7 @@ apiRouter.get("/logs/labels", async (req, res, next) => {
 
     const resp = await axios.get(`${LOKI_URL}/loki/api/v1/labels`, config);
     const labels = resp.data.data || [];
+    console.log(`[API LOGS] All available Loki labels in namespace:`, labels);
     const filtered = labels.filter(l => !l.startsWith("__") && LOKI_LABELS.includes(l)).sort();
     res.json(filtered.length > 0 ? filtered : LOKI_LABELS);
   } catch (error) {
@@ -1163,6 +1164,8 @@ apiRouter.get("/logs/:id", async (req, res, next) => {
     const { id } = req.params;
     const { type, start_time, end_time, query, namespace, workflow } = req.query;
 
+    console.log(`[API LOGS] Request received for ID: "${id}" | Type: "${type}" | Start: "${start_time || 'default'}" | End: "${end_time || 'none'}"`);
+
     // Sanitize user inputs to prevent LogQL injection
     const safeId = id.replace(/"/g, '');
     const safeNamespace = namespace ? namespace.toString().replace(/"/g, '') : undefined;
@@ -1172,6 +1175,8 @@ apiRouter.get("/logs/:id", async (req, res, next) => {
 
     const startNs = toLokiTimestamp(start_time || new Date(Date.now() - 3600000 * 24).toISOString());
     const endNs = end_time ? toLokiTimestamp(end_time) : null;
+
+    console.log(`[API LOGS] Computed Loki bounds: startNs="${startNs}" | endNs="${endNs || 'none'}"`);
 
     let logql = "";
     if (type === 'workflow') {
@@ -1196,6 +1201,10 @@ apiRouter.get("/logs/:id", async (req, res, next) => {
       let resp;
       try {
         resp = await axios.get(`${LOKI_URL}/loki/api/v1/query_range`, config);
+        if (resp.data) {
+          const resultsCount = resp.data.data?.result?.length || 0;
+          console.log(`[API LOGS] Loki response: status=${resp.status} | resultsCount=${resultsCount}`);
+        }
       } catch (err) {
         console.error("Loki query failed:", err.message);
         return [];
@@ -1255,12 +1264,30 @@ apiRouter.get("/logs/:id", async (req, res, next) => {
 
     let logs = await fetchAndParse(logql);
 
+    // If no workflow logs found with namespace label, try without it (global query)
+    if (logs.length === 0 && type === 'workflow') {
+      console.log(`No logs found with namespace-filtered workflow label. Attempting global workflow query (without namespace)...`);
+      logs = await fetchAndParse(`{${ARGO_WORKFLOW_LABEL}="${safeId}"}`);
+    }
+
     // Fallbacks for pod log fetching if the standard `pod` label isn't used by their Promtail
     if (logs.length === 0 && type !== 'workflow') {
       console.log(`No logs found with pod label. Attempting fallback labels for pod ${safeId}...`);
       logs = await fetchAndParse(`{${NAMESPACE_LABEL}="${ns}", k8s_pod_name="${safeId}"}`);
       if (logs.length === 0) {
         logs = await fetchAndParse(`{${NAMESPACE_LABEL}="${ns}", kubernetes_pod_name="${safeId}"}`);
+      }
+      
+      // Global Fallbacks (without namespace label) in case namespace label is differently named (e.g. k8s_namespace)
+      if (logs.length === 0) {
+        console.log(`No logs found with namespace pod labels. Attempting global pod queries (without namespace)...`);
+        logs = await fetchAndParse(`{pod="${safeId}"}`);
+        if (logs.length === 0) {
+          logs = await fetchAndParse(`{k8s_pod_name="${safeId}"}`);
+        }
+        if (logs.length === 0) {
+          logs = await fetchAndParse(`{kubernetes_pod_name="${safeId}"}`);
+        }
       }
       
       // If the node ID is something like `wf-12345` but the actual pod is `wf-task-12345`
@@ -1275,13 +1302,30 @@ apiRouter.get("/logs/:id", async (req, res, next) => {
         if (logs.length === 0) {
             logs = await fetchAndParse(`{${NAMESPACE_LABEL}="${ns}", k8s_pod_name=~".*${hash}.*"}`);
         }
+        
+        // Global Regex Fallbacks
+        if (logs.length === 0) {
+          console.log(`No logs found with regex namespace pod labels. Attempting global regex pod queries (without namespace)...`);
+          logs = await fetchAndParse(`{pod=~".*${hash}.*"}`);
+          if (logs.length === 0) {
+            logs = await fetchAndParse(`{k8s_pod_name=~".*${hash}.*"}`);
+          }
+        }
       }
     }
 
     if (logs.length === 0) {
+      console.log(`[API LOGS] No logs found across all labels and fallbacks for ID: "${id}"`);
+      try {
+        const labelsResp = await axios.get(`${LOKI_URL}/loki/api/v1/labels`, config);
+        console.log(`[API LOGS] DIAGNOSTIC: All available Loki label keys in your cluster are:`, labelsResp.data.data || []);
+      } catch (labelErr) {
+        console.error(`[API LOGS] DIAGNOSTIC ERROR: Failed to fetch Loki labels:`, labelErr.message);
+      }
       return res.send("No logs found in Loki for the specified execution time range.");
     }
     
+    console.log(`[API LOGS] Successfully returning ${logs.length} log lines for ID: "${id}"`);
     res.send(logs.reverse().join('\n'));
   } catch (error) {
     console.error(`Error fetching logs for ${req.params.id}:`, error.message);

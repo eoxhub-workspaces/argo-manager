@@ -409,21 +409,23 @@ const ExecutionsView: React.FC = () => {
           const node = selectedExe.status.nodes[id];
           if (node.startedAt) startTime = node.startedAt;
           if (node.finishedAt) endTime = node.finishedAt;
+        } else if (selectedExe.status?.finishedAt) {
+          endTime = selectedExe.status.finishedAt;
         }
       }
 
-      // Buffer start time by 1 hour to account for clock skew and DAGs
+      // Buffer start time by 24 hours to safely absorb timezone offsets, clock drift, and old runs
       if (startTime) {
-        const dt = new Date(startTime);
-        dt.setHours(dt.getHours() - 1);
-        startTime = dt.toISOString();
+        startTime = new Date(
+          new Date(startTime).getTime() - 24 * 3600 * 1000
+        ).toISOString();
       }
 
-      // Buffer end time by 1 hour if it exists
+      // Buffer end time by 24 hours to safely absorb timezone offsets and clock drift
       if (endTime) {
-        const dt = new Date(endTime);
-        dt.setHours(dt.getHours() + 1);
-        endTime = dt.toISOString();
+        endTime = new Date(
+          new Date(endTime).getTime() + 24 * 3600 * 1000
+        ).toISOString();
       }
 
       const workflowName = selectedExe?.metadata.name;
@@ -788,7 +790,7 @@ const ExecutionsView: React.FC = () => {
                       seen.add(id);
                       const node = nodes[id];
                       if (!node) return;
-                      orderedNodes.push({ ...node, depth });
+                      orderedNodes.push({ ...node, id, depth });
                       if (node.children) {
                         node.children.forEach((childId: string) =>
                           traverse(childId, depth + 1)
@@ -834,6 +836,9 @@ const ExecutionsView: React.FC = () => {
                         }))
                       ];
 
+                      const isRoot =
+                        selectedExe && node.id === selectedExe.metadata.name;
+
                       return (
                         <React.Fragment key={node.id}>
                           <li
@@ -843,14 +848,19 @@ const ExecutionsView: React.FC = () => {
                             }}
                             onClick={() => {
                               setSelectedNodeId(node.id);
-                              if (node.type === "Pod") {
-                                fetchLogs(node.id);
+                              if (isRoot) {
+                                fetchLogs(node.id, "workflow");
+                              } else if (
+                                node.type !== "StepGroup" &&
+                                node.type !== "DAG"
+                              ) {
+                                fetchLogs(node.id, "pod");
                               } else {
                                 setLogs(`Logs are only available for actual step executions (Pods).
 
-Node: ${node.name}
-Type: ${node.type}
-Phase: ${node.phase}`);
+                      Node: ${node.name}
+                      Type: ${node.type}
+                      Phase: ${node.phase}`);
                               }
                             }}
                           >
@@ -864,12 +874,17 @@ Phase: ${node.phase}`);
                                   ({node.type})
                                 </span>
                               </div>
-                              {node.type === "Pod" && (
+                              {(isRoot ||
+                                (node.type !== "StepGroup" &&
+                                  node.type !== "DAG")) && (
                                 <div className="flex space-x-1">
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      fetchLogs(node.id);
+                                      fetchLogs(
+                                        node.id,
+                                        isRoot ? "workflow" : "pod"
+                                      );
                                     }}
                                     className="p-1 rounded hover:bg-gray-200 text-gray-500 transition-colors"
                                     title="View Logs"
