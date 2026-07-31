@@ -483,6 +483,11 @@ const ExecutionsView: React.FC = () => {
         return (
           <ArrowPathIcon className={`${size} text-blue-500 animate-spin`} />
         );
+      case "Pending":
+      case "PodInitializing":
+        return (
+          <ClockIcon className={`${size} text-yellow-500 animate-pulse`} />
+        );
       case "Unknown (Loki Only)":
       case "Unknown (Loki)":
         return <CommandLineIcon className={`${size} text-indigo-400`} />;
@@ -607,7 +612,10 @@ const ExecutionsView: React.FC = () => {
                                 : exe.status?.phase === "Failed" ||
                                     exe.status?.phase === "Error"
                                   ? "bg-red-100 text-red-800 border-red-200"
-                                  : "bg-gray-100 text-gray-800 border-gray-200"
+                                  : exe.status?.phase === "Pending" ||
+                                      exe.status?.phase === "PodInitializing"
+                                    ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                                    : "bg-gray-100 text-gray-800 border-gray-200"
                           }`}
                         >
                           {exe.status?.phase || "Pending"}
@@ -791,7 +799,7 @@ const ExecutionsView: React.FC = () => {
                     traverse((rootNode as any).id, 0);
 
                     return orderedNodes.map((node: any) => {
-                      const cleanName = node.name.startsWith(
+                      let cleanName = node.name.startsWith(
                         selectedExe.metadata.name
                       )
                         ? node.name === selectedExe.metadata.name
@@ -800,6 +808,20 @@ const ExecutionsView: React.FC = () => {
                               .substring(selectedExe.metadata.name.length)
                               .replace(/^[.-]/, "")
                         : node.name;
+
+                      // Clean up step indices (e.g. "[0].print-timestamp" -> "print-timestamp")
+                      cleanName = cleanName.replace(/^\[\d+\]\./, "");
+
+                      // Format step group names (e.g. "[0]" -> "Step Group #1")
+                      if (
+                        node.type === "StepGroup" &&
+                        /^\[\d+\]$/.test(cleanName)
+                      ) {
+                        const index = cleanName.match(/\d+/)?.[0];
+                        if (index !== undefined) {
+                          cleanName = `Step Group #${Number(index) + 1}`;
+                        }
+                      }
 
                       const artifacts = [
                         ...(node.inputs?.artifacts || []).map((a: any) => ({
@@ -819,9 +841,18 @@ const ExecutionsView: React.FC = () => {
                             style={{
                               paddingLeft: `${node.depth * 1.5 + 0.75}rem`
                             }}
-                            onClick={() =>
-                              node.type === "Pod" && fetchLogs(node.id)
-                            }
+                            onClick={() => {
+                              setSelectedNodeId(node.id);
+                              if (node.type === "Pod") {
+                                fetchLogs(node.id);
+                              } else {
+                                setLogs(`Logs are only available for actual step executions (Pods).
+
+Node: ${node.name}
+Type: ${node.type}
+Phase: ${node.phase}`);
+                              }
+                            }}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center space-x-2">

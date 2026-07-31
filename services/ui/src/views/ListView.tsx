@@ -109,8 +109,26 @@ const ListView: React.FC = () => {
     const fetchToast = toast.loading("Preparing workflow...");
     try {
       const content = await getWorkflow(path);
-      const parsed = YAML.parse(content);
+      let parsed = YAML.parse(content);
       toast.dismiss(fetchToast);
+
+      // If it's a CronWorkflow, transform it to a Workflow to execute immediately
+      if (parsed.kind === "CronWorkflow") {
+        parsed = {
+          apiVersion: parsed.apiVersion || "argoproj.io/v1alpha1",
+          kind: "Workflow",
+          metadata: {
+            generateName: (parsed.metadata.name || "cron") + "-",
+            namespace: parsed.metadata.namespace,
+            labels: {
+              ...parsed.metadata.labels,
+              "workflows.argoproj.io/cron-workflow": parsed.metadata.name,
+              "workflows.argoproj.io/workflow-template": parsed.metadata.name
+            }
+          },
+          spec: parsed.spec?.workflowSpec || {}
+        };
+      }
 
       const params = parsed?.spec?.arguments?.parameters || [];
       if (params.length > 0) {

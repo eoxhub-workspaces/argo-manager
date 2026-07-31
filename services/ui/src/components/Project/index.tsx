@@ -79,6 +79,25 @@ export default function Project() {
   const [config, setConfig] = useState<api.AppConfig | null>(null);
 
   const { filename, mode } = useParams<{ filename?: string; mode?: string }>();
+
+  const [isDirty, setIsDirty] = useState(false);
+  const isLoadedRef = useRef(false);
+
+  useEffect(() => {
+    isLoadedRef.current = false;
+    setIsDirty(false);
+  }, [filename]);
+
+  useEffect(() => {
+    if (nodes && Object.keys(nodes).length > 0) {
+      if (!isLoadedRef.current) {
+        isLoadedRef.current = true;
+      } else {
+        setIsDirty(true);
+      }
+    }
+  }, [nodes, connections, canvasPosition]);
+
   const navigate = useNavigate();
   const [currentFilename, setCurrentFilename] = useState(
     filename || initialName
@@ -204,6 +223,67 @@ export default function Project() {
     }
   };
 
+  const handleRunOnlyClick = async () => {
+    try {
+      const visualState = {
+        nodes,
+        connections,
+        canvasPosition
+      };
+
+      const flatConnections = connections.map((conn) => ({
+        source: conn[0],
+        target: conn[1]
+      }));
+
+      const options = config
+        ? {
+            profileData: initialProfile
+              ? config.profiles[initialProfile]
+              : null,
+            ephemeralVol: initialEphemeral
+              ? { ...config.ephemeralVolume, storage: initialEphemeralSize }
+              : null
+          }
+        : {};
+
+      let parsed = generateSteppedManifest(
+        { nodes, connections: flatConnections },
+        visualState,
+        baseYamlRef.current,
+        initialKind,
+        initialName,
+        options
+      );
+
+      if (parsed.kind === "CronWorkflow") {
+        parsed = {
+          apiVersion: parsed.apiVersion || "argoproj.io/v1alpha1",
+          kind: "Workflow",
+          metadata: {
+            generateName: (parsed.metadata.name || "cron") + "-",
+            namespace: parsed.metadata.namespace,
+            labels: {
+              ...parsed.metadata.labels,
+              "workflows.argoproj.io/cron-workflow": parsed.metadata.name,
+              "workflows.argoproj.io/workflow-template": parsed.metadata.name
+            }
+          },
+          spec: parsed.spec?.workflowSpec || {}
+        };
+      }
+
+      const params = parsed?.spec?.arguments?.parameters || [];
+      if (params.length > 0) {
+        setExecutingWorkflow(parsed);
+      } else {
+        await finalizeSubmission(parsed);
+      }
+    } catch (err: any) {
+      toast.error(`Execution failed: ${err.message || "Unknown error"}`);
+    }
+  };
+
   const executeSave = async (
     applyDefaults: boolean,
     manifest: any,
@@ -244,6 +324,9 @@ export default function Project() {
         );
         setCurrentFilename(name);
       }
+
+      isLoadedRef.current = false;
+      setIsDirty(false);
 
       setShowIngestionModal(false);
 
@@ -879,22 +962,46 @@ export default function Project() {
                     <PlusIcon className="w-4" />
                     <span>Template</span>
                   </button>
-                  <button
-                    className="flex space-x-1 btn-util"
-                    type="button"
-                    onClick={() => handleSaveClick(false)}
-                  >
-                    <CloudArrowUpIcon className="w-4" />
-                    <span>Save</span>
-                  </button>
-                  <button
-                    className="flex space-x-1 btn-util bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                    type="button"
-                    onClick={() => handleSaveClick(true)}
-                  >
-                    <PlayIcon className="w-4" />
-                    <span>Save & Run</span>
-                  </button>
+                  {isDirty ? (
+                    <>
+                      <button
+                        className="flex space-x-1 btn-util"
+                        type="button"
+                        onClick={() => handleSaveClick(false)}
+                      >
+                        <CloudArrowUpIcon className="w-4" />
+                        <span>Save</span>
+                      </button>
+                      <button
+                        className="flex space-x-1 btn-util bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                        type="button"
+                        onClick={() => handleSaveClick(true)}
+                      >
+                        <PlayIcon className="w-4" />
+                        <span>Save & Run</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="flex space-x-1 btn-util text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed"
+                        type="button"
+                        disabled={true}
+                        title="No changes to save"
+                      >
+                        <CloudArrowUpIcon className="w-4" />
+                        <span>Save</span>
+                      </button>
+                      <button
+                        className="flex space-x-1 btn-util bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                        type="button"
+                        onClick={handleRunOnlyClick}
+                      >
+                        <PlayIcon className="w-4" />
+                        <span>Run</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
