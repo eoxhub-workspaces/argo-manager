@@ -35,7 +35,7 @@ const parseStatusMessage = (exe: any, specificMessage?: string) => {
   if (!rawMessage && exe?.status?.nodes) {
     const nodesWithMsgs = Object.values(exe.status.nodes).filter(
       (n: any) => n.message
-    );
+    ) as any[];
     if (nodesWithMsgs.length > 0) {
       // Prefer quota or forbidden messages, otherwise just take the first one
       const quotaNode = nodesWithMsgs.find(

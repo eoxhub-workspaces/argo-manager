@@ -288,6 +288,11 @@ function getGitLabPath(virtualPath) {
   return `${basePath}/${cleanVirtualPath}`;
 }
 
+// Helper to extract virtual path from req.params under both Express 4 and Express 5, and under both string wildcards and RegExp routes
+function getVirtualPath(req) {
+  return req.params[0] || (Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || ''));
+}
+
 /**
  * GET /api/published-workflows
  * Get the list of published workflow IDs from pygeoapi/hr-pygeoapi.yaml.
@@ -318,9 +323,9 @@ apiRouter.get("/published-workflows", async (req, res, next) => {
  * POST /api/workflows/.../publish
  * Publish a workflow template to pygeoapi/hr-pygeoapi.yaml.
  */
-apiRouter.post("/workflows/*path/publish", async (req, res, next) => {
+apiRouter.post(/^\/workflows\/(.+)\/publish$/, async (req, res, next) => {
   try {
-    const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+    const virtualPath = getVirtualPath(req);
     const filename = virtualPath.split('/').pop();
     const logicalName = filename.replace(/\.ya?ml$/i, "");
     const filePath = "pygeoapi/hr-pygeoapi.yaml";
@@ -381,9 +386,9 @@ apiRouter.post("/workflows/*path/publish", async (req, res, next) => {
  * DELETE /api/workflows/.../publish
  * Unpublish a workflow template from pygeoapi/hr-pygeoapi.yaml.
  */
-apiRouter.delete("/workflows/*path/publish", async (req, res, next) => {
+apiRouter.delete(/^\/workflows\/(.+)\/publish$/, async (req, res, next) => {
   try {
-    const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+    const virtualPath = getVirtualPath(req);
     const filename = virtualPath.split('/').pop();
     const logicalName = filename.replace(/\.ya?ml$/i, "");
     const filePath = "pygeoapi/hr-pygeoapi.yaml";
@@ -432,9 +437,9 @@ apiRouter.delete("/workflows/*path/publish", async (req, res, next) => {
 
 // GET /api/workflows/*/sync-status
 // Check if the Kubernetes resource for a workflow has been updated with a specific sync-token.
-apiRouter.get("/workflows/*path/sync-status", async (req, res, next) => {
+apiRouter.get(/^\/workflows\/(.+)\/sync-status$/, async (req, res, next) => {
   try {
-    const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+    const virtualPath = getVirtualPath(req);
     const filename = virtualPath.split('/').pop();
     const logicalName = filename.replace(/\.ya?ml$/i, "");
     const { token } = req.query;
@@ -520,9 +525,9 @@ apiRouter.get("/workflows", async (req, res, next) => {
  * GET /api/workflows/.../history
  * Get the commit history for a file.
  */
-apiRouter.get("/workflows/*path/history", async (req, res, next) => {
+apiRouter.get(/^\/workflows\/(.+)\/history$/, async (req, res, next) => {
   try {
-    const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+    const virtualPath = getVirtualPath(req);
     const filePath = getGitLabPath(virtualPath);
     const response = await gitlabApi.get(
       `/projects/${GITLAB_PROJECT_ID}/repository/commits`,
@@ -544,12 +549,12 @@ apiRouter.get("/workflows/*path/history", async (req, res, next) => {
  * GET /api/workflows/<path>
  * Get the raw content of a file.
  */
-apiRouter.get("/workflows/*path", async (req, res, next) => {
-  // If the wildcard matches nothing, req.params[0] might be undefined.
+apiRouter.get(/^\/workflows\/(.+)$/, async (req, res, next) => {
+  // If the wildcard matches nothing, req.path might be '/workflows/' or '/workflows'.
   if (req.path === '/workflows/' || req.path === '/workflows') return next();
 
   try {
-    const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+    const virtualPath = getVirtualPath(req);
     const filePath = getGitLabPath(virtualPath);
     const ref = req.query.ref || GITLAB_BRANCH;
 
@@ -572,9 +577,9 @@ apiRouter.get("/workflows/*path", async (req, res, next) => {
  * POST /api/workflows/<path>/restore
  * Restore a soft-deleted workflow.
  */
-apiRouter.post("/workflows/*path/restore", async (req, res, next) => {
+apiRouter.post(/^\/workflows\/(.+)\/restore$/, async (req, res, next) => {
   try {
-    const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+    const virtualPath = getVirtualPath(req);
     const filePath = getGitLabPath(virtualPath);
     const originalPath = filePath.replace(/\.deleted$/, "");
 
@@ -603,9 +608,9 @@ apiRouter.post("/workflows/*path/restore", async (req, res, next) => {
  * DELETE /api/workflows/*
  * Soft-delete a workflow by renaming it with a .deleted extension.
  */
-apiRouter.delete("/workflows/*path", async (req, res, next) => {
+apiRouter.delete(/^\/workflows\/(.+)$/, async (req, res, next) => {
   try {
-    const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+    const virtualPath = getVirtualPath(req);
     const filePath = getGitLabPath(virtualPath);
     
     const response = await gitlabApi.post(
@@ -634,11 +639,11 @@ apiRouter.delete("/workflows/*path", async (req, res, next) => {
  * Create a new file.
  */
 apiRouter.post(
-  "/workflows/*path",
+  /^\/workflows\/(.+)$/,
   validateArgoWorkflow,
   async (req, res, next) => {
     try {
-      const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+      const virtualPath = getVirtualPath(req);
       const filePath = getGitLabPath(virtualPath);
       const { content, commit_message, applyDefaults } = req.body;
 
@@ -675,11 +680,11 @@ apiRouter.post(
  * Update an existing file.
  */
 apiRouter.put(
-  "/workflows/*path",
+  /^\/workflows\/(.+)$/,
   validateArgoWorkflow,
   async (req, res, next) => {
     try {
-      const virtualPath = Array.isArray(req.params.path) ? req.params.path.join('/') : String(req.params.path || '');
+      const virtualPath = getVirtualPath(req);
       const filePath = getGitLabPath(virtualPath);
       const { content, commit_message, applyDefaults } = req.body;
 

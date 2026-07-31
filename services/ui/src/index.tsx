@@ -25,7 +25,8 @@ const getBasename = () => {
   const path = window.location.pathname;
 
   // Regular expression to match our known frontend routes
-  const knownRoutesRegex = /\/(new|edit|history|workflows)(\/|$)/;
+  const knownRoutesRegex =
+    /\/(new|edit|history|workflows|executions|resources)(\/|$)/;
   const match = path.match(knownRoutesRegex);
 
   if (match) {
