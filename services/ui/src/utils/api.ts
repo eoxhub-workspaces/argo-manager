@@ -75,6 +75,8 @@ export interface AppConfig {
       tolerations?: any[];
     }
   >;
+  availableTolerations?: any[];
+  availableNodeSelectors?: any[];
   ephemeralVolume: {
     name: string;
     storage: string;
@@ -87,7 +89,6 @@ export interface AppConfig {
   };
   logViewerUrl?: string;
   allowPublishing: boolean;
-  experimentalCanvas: boolean;
 }
 
 export interface WorkflowExecution {

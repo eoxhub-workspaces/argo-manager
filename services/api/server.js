@@ -210,6 +210,35 @@ if (process.env.ARGO_PROFILES) {
   }
 }
 
+const DEFAULT_TOLERATIONS = [
+  { key: "nvidia.com/gpu", operator: "Exists", effect: "NoSchedule", label: "NVIDIA GPU Pool" },
+  { key: "dedicated", operator: "Equal", value: "high-mem", effect: "NoSchedule", label: "High-Memory Dedicated Pool" }
+];
+
+const DEFAULT_NODE_SELECTORS = [
+  { key: "kubernetes.io/arch", value: "amd64", label: "Intel/AMD x86_64" },
+  { key: "kubernetes.io/arch", value: "arm64", label: "Apple Silicon/ARM64" },
+  { key: "topology.kubernetes.io/zone", value: "eu-central-1a", label: "EU Central Zone 1A" }
+];
+
+let ARGO_AVAILABLE_TOLERATIONS = DEFAULT_TOLERATIONS;
+if (process.env.ARGO_AVAILABLE_TOLERATIONS) {
+  try {
+    ARGO_AVAILABLE_TOLERATIONS = JSON.parse(process.env.ARGO_AVAILABLE_TOLERATIONS);
+  } catch (e) {
+    console.error("Failed to parse ARGO_AVAILABLE_TOLERATIONS from environment, using defaults.", e);
+  }
+}
+
+let ARGO_AVAILABLE_NODE_SELECTORS = DEFAULT_NODE_SELECTORS;
+if (process.env.ARGO_AVAILABLE_NODE_SELECTORS) {
+  try {
+    ARGO_AVAILABLE_NODE_SELECTORS = JSON.parse(process.env.ARGO_AVAILABLE_NODE_SELECTORS);
+  } catch (e) {
+    console.error("Failed to parse ARGO_AVAILABLE_NODE_SELECTORS from environment, using defaults.", e);
+  }
+}
+
 const EPHEMERAL_VOLUME_CONFIG = {
   name: "ephemeral-workdir",
   storage: "2Gi",
@@ -260,9 +289,10 @@ apiRouter.use((req, res, next) => {
 apiRouter.get("/config", (req, res) => {
   res.json({
     profiles: ARGO_PROFILES,
+    availableTolerations: ARGO_AVAILABLE_TOLERATIONS,
+    availableNodeSelectors: ARGO_AVAILABLE_NODE_SELECTORS,
     ephemeralVolume: EPHEMERAL_VOLUME_CONFIG,
     allowPublishing: process.env.ALLOW_PUBLISHING === "true",
-    experimentalCanvas: process.env.EXPERIMENTAL_CANVAS === "true",
     logViewerUrl: process.env.LOG_VIEWER_URL || `https://hub-test.eox.at/services/eoxhub-gateway/cif/log-viewer/search`,
     defaults: {
       namespace: process.env.ARGO_NAMESPACE || "default",

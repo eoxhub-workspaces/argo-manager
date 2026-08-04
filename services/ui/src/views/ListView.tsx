@@ -18,13 +18,11 @@ import {
   DocumentIcon,
   ClockIcon,
   CodeBracketIcon,
-  Squares2X2Icon,
   TrashIcon,
   ArrowUturnLeftIcon,
   ArrowPathIcon,
   CloudArrowUpIcon,
   CloudArrowDownIcon,
-  InformationCircleIcon,
   PlayIcon,
   EllipsisVerticalIcon,
   ServerStackIcon
@@ -56,9 +54,7 @@ const ListView: React.FC = () => {
   const [publishing, setPublishing] = useState<Record<string, boolean>>({});
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
-  const [newModalMode, setNewModalMode] = useState<"code" | "canvas" | null>(
-    null
-  );
+  const [showNewModal, setShowNewModal] = useState(false);
   const [executingWorkflow, setExecutingWorkflow] = useState<any | null>(null);
 
   useEffect(() => {
@@ -85,12 +81,8 @@ const ListView: React.FC = () => {
       ephemeralSize: options.ephemeralSize || "2Gi"
     });
 
-    if (newModalMode === "code") {
-      navigate(`/new/code?${params.toString()}`);
-    } else if (newModalMode === "canvas") {
-      navigate(`/new/canvas?${params.toString()}`);
-    }
-    setNewModalMode(null);
+    navigate(`/new?${params.toString()}`);
+    setShowNewModal(false);
   };
 
   const executeWorkflow = async (workflow: any) => {
@@ -275,9 +267,9 @@ const ListView: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-gray-50 overflow-hidden">
-      {newModalMode && (
+      {showNewModal && (
         <NewWorkflowModal
-          onClose={() => setNewModalMode(null)}
+          onClose={() => setShowNewModal(false)}
           onSubmit={handleCreateNew}
         />
       )}
@@ -295,27 +287,15 @@ const ListView: React.FC = () => {
         </div>
         <div className="flex space-x-2">
           <button
-            onClick={() => setNewModalMode("code")}
+            onClick={() => setShowNewModal(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded shadow-sm text-white bg-[#004170] hover:bg-[#002f52] focus:outline-none transition-colors"
           >
             <CodeBracketIcon
               className="-ml-1 mr-2 h-5 w-5"
               aria-hidden="true"
             />
-            New (Code)
+            New Workflow
           </button>
-          {config?.experimentalCanvas && (
-            <button
-              onClick={() => setNewModalMode("canvas")}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded shadow-sm text-white bg-[#0078b4] hover:bg-[#005f8f] focus:outline-none transition-colors"
-            >
-              <Squares2X2Icon
-                className="-ml-1 mr-2 h-5 w-5"
-                aria-hidden="true"
-              />
-              New (Canvas)
-            </button>
-          )}
         </div>
       </header>
 
@@ -379,27 +359,15 @@ const ListView: React.FC = () => {
             {viewTab === "active" && (
               <div className="mt-6 flex justify-center space-x-3">
                 <button
-                  onClick={() => setNewModalMode("code")}
+                  onClick={() => setShowNewModal(true)}
                   className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded text-white bg-[#004170] hover:bg-[#002f52]"
                 >
                   <CodeBracketIcon
                     className="-ml-1 mr-2 h-5 w-5"
                     aria-hidden="true"
                   />
-                  Code Mode
+                  Create Workflow
                 </button>
-                {config?.experimentalCanvas && (
-                  <button
-                    onClick={() => setNewModalMode("canvas")}
-                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded text-white bg-[#0078b4] hover:bg-[#005f8f]"
-                  >
-                    <Squares2X2Icon
-                      className="-ml-1 mr-2 h-5 w-5"
-                      aria-hidden="true"
-                    />
-                    Canvas Mode
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -416,7 +384,7 @@ const ListView: React.FC = () => {
                       onClick={() => {
                         if (viewTab === "active") {
                           navigate(
-                            `/edit/code/${encodeURIComponent(workflow.path)}`
+                            `/edit/${encodeURIComponent(workflow.path)}`
                           );
                         }
                       }}
@@ -530,18 +498,6 @@ const ListView: React.FC = () => {
                                       <ServerStackIcon className="mr-3 h-5 w-5 text-gray-400 group-hover:text-gray-500" />
                                       History
                                     </Link>
-
-                                    {config?.experimentalCanvas && (
-                                      <Link
-                                        to={`/edit/canvas/${encodeURIComponent(workflow.path)}`}
-                                        className="group flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                                        role="menuitem"
-                                        onClick={() => setOpenDropdownId(null)}
-                                      >
-                                        <Squares2X2Icon className="mr-3 h-5 w-5 text-gray-400 group-hover:text-[#0078b4]" />
-                                        Canvas Edit
-                                      </Link>
-                                    )}
 
                                     {config?.allowPublishing &&
                                       metadata[workflow.path]?.kind ===

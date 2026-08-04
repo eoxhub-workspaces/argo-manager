@@ -1,8 +1,7 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
-import Project from "./components/Project";
 import CodeProject from "./components/CodeProject";
 import ListView from "./views/ListView";
 import HistoryView from "./views/HistoryView";
@@ -29,15 +28,6 @@ window.addEventListener("unhandledrejection", (event) => {
   }
 });
 
-// A wrapper to dispatch between the dedicated Code view and the Canvas/Split view
-const ModeDispatcher = () => {
-  const { mode } = useParams<{ mode: string }>();
-  if (mode === "code") {
-    return <CodeProject />;
-  }
-  return <Project />;
-};
-
 export default function App() {
   const setViewHeight = () => {
     const vh = window.innerHeight * 0.01;
@@ -61,16 +51,13 @@ export default function App() {
           <Route path="/" element={<ListView />} />
           <Route path="/executions" element={<ExecutionsView />} />
           <Route path="/resources" element={<ResourcesView />} />
-          <Route path="/new/:mode" element={<ModeDispatcher />} />
-          <Route path="/edit/:mode/:filename" element={<ModeDispatcher />} />
+          <Route path="/new" element={<CodeProject />} />
+          <Route path="/edit/:filename" element={<CodeProject />} />
           <Route path="/history/:filename" element={<HistoryView />} />
           <Route path="/workflows" element={<Navigate to="/" replace />} />
-          {/* Legacy routes fallback */}
-          <Route path="/new" element={<Navigate to="/new/code" replace />} />
-          <Route
-            path="/edit/:filename"
-            element={<Navigate to="/edit/code/:filename" replace />}
-          />
+          {/* Fallback legacy routes */}
+          <Route path="/new/*" element={<Navigate to="/new" replace />} />
+          <Route path="/edit/*" element={<Navigate to="/" replace />} />
         </Routes>
       </MainLayout>
     </ThemeProvider>

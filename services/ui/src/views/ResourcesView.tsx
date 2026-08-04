@@ -29,6 +29,48 @@ import {
 
 const COLORS = ["#004170", "#0078b4", "#00a3e0", "#71c5ee", "#b1e4ff"];
 
+const formatCpu = (coreHours: number) => {
+  if (coreHours === 0) return "0 core-hours";
+  if (coreHours < 0.0167) {
+    // Less than 1 minute
+    return `${(coreHours * 3600).toFixed(1)} core-seconds`;
+  }
+  if (coreHours < 1) {
+    // Less than 1 hour
+    return `${(coreHours * 60).toFixed(1)} core-minutes`;
+  }
+  return `${coreHours.toFixed(3)} core-hours`;
+};
+
+const formatBytes = (gbHours: number) => {
+  if (gbHours === 0) return "0 GB-hours";
+  const mbHours = gbHours * 1024;
+  if (mbHours < 0.0167) {
+    // Less than 1 MB-minute
+    return `${(mbHours * 3600).toFixed(1)} MB-seconds`;
+  }
+  if (mbHours < 1) {
+    // Less than 1 MB-hour
+    return `${(mbHours * 60).toFixed(1)} MB-minutes`;
+  }
+  if (gbHours < 1) {
+    // Less than 1 GB-hour
+    return `${mbHours.toFixed(1)} MB-hours`;
+  }
+  return `${gbHours.toFixed(3)} GB-hours`;
+};
+
+const formatGpu = (gpuHours: number) => {
+  if (gpuHours === 0) return "0 GPU-hours";
+  if (gpuHours < 0.0167) {
+    return `${(gpuHours * 3600).toFixed(1)} GPU-seconds`;
+  }
+  if (gpuHours < 1) {
+    return `${(gpuHours * 60).toFixed(1)} GPU-minutes`;
+  }
+  return `${gpuHours.toFixed(3)} GPU-hours`;
+};
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
@@ -45,19 +87,33 @@ const CustomTooltip = ({ active, payload, label }: any) => {
             Run Time: {data.formattedTime}
           </p>
         )}
-        {payload.map((item: any) => (
-          <p key={item.name} className="flex justify-between space-x-4">
-            <span
-              style={{ color: item.color || item.fill }}
-              className="font-medium"
-            >
-              {item.name}:
-            </span>
-            <span className="font-mono font-semibold text-gray-900">
-              {Number(item.value).toFixed(3)}
-            </span>
-          </p>
-        ))}
+        {payload.map((item: any) => {
+          const val = Number(item.value);
+          let formattedVal = val.toFixed(3);
+          if (item.name.toLowerCase().includes("cpu")) {
+            formattedVal = formatCpu(val);
+          } else if (
+            item.name.toLowerCase().includes("memory") ||
+            item.name.toLowerCase().includes("storage")
+          ) {
+            formattedVal = formatBytes(val);
+          } else if (item.name.toLowerCase().includes("gpu")) {
+            formattedVal = formatGpu(val);
+          }
+          return (
+            <p key={item.name} className="flex justify-between space-x-4">
+              <span
+                style={{ color: item.color || item.fill }}
+                className="font-medium"
+              >
+                {item.name}:
+              </span>
+              <span className="font-mono font-semibold text-gray-900">
+                {formattedVal}
+              </span>
+            </p>
+          );
+        })}
       </div>
     );
   }
@@ -79,6 +135,45 @@ const getWorkflowIdentifier = (exe: any) => {
     }
   }
   return name;
+};
+
+const getEstimatedDurations = (exe: any) => {
+  const duration = exe.status?.resourcesDuration || {};
+  let cpu = duration.cpu || 0;
+  let memory = duration.memory || 0;
+  let storage = duration["ephemeral-storage"] || duration.storage || 0;
+  const gpu = duration["nvidia.com/gpu"] || duration.gpu || 0;
+
+  // FALLBACK: If Argo did not compute durations (e.g. no resource requests were explicitly written in YAML)
+  if (cpu === 0 && exe.status?.nodes) {
+    let totalPodDurationSec = 0;
+    Object.values(exe.status.nodes).forEach((n: any) => {
+      if (n.type === "Pod" && n.startedAt && n.finishedAt) {
+        const runTimeMs =
+          new Date(n.finishedAt).getTime() - new Date(n.startedAt).getTime();
+        if (runTimeMs > 0) {
+          totalPodDurationSec += runTimeMs / 1000;
+        }
+      }
+    });
+
+    if (totalPodDurationSec > 0) {
+      // Estimate CPU: Assume standard default of 100m CPU (base unit multiplier 0.1)
+      cpu = totalPodDurationSec * 0.1;
+
+      // Estimate Memory: Assume standard default of 100Mi (Argo memoryDuration base unit multiplier 1)
+      if (memory === 0) {
+        memory = totalPodDurationSec * 1;
+      }
+
+      // Estimate Storage: Assume standard default of 100Mi (Argo storageDuration base unit multiplier 1)
+      if (storage === 0) {
+        storage = totalPodDurationSec * 1;
+      }
+    }
+  }
+
+  return { cpu, memory, storage, gpu };
 };
 
 const ResourcesView: React.FC = () => {
@@ -152,11 +247,7 @@ const ResourcesView: React.FC = () => {
     > = {};
 
     filteredData.forEach((exe) => {
-      const duration = exe.status?.resourcesDuration || {};
-      const cpu = duration.cpu || 0;
-      const memory = duration.memory || 0;
-      const storage = duration["ephemeral-storage"] || duration.storage || 0;
-      const gpu = duration["nvidia.com/gpu"] || duration.gpu || 0;
+      const { cpu, memory, storage, gpu } = getEstimatedDurations(exe);
 
       // Group by workflow
       const wfName = getWorkflowIdentifier(exe);
@@ -180,11 +271,7 @@ const ResourcesView: React.FC = () => {
     const workflowChartData = filteredData
       .map((exe, index) => {
         const name = exe.metadata.name;
-        const duration = exe.status?.resourcesDuration || {};
-        const cpu = duration.cpu || 0;
-        const memory = duration.memory || 0;
-        const storage = duration["ephemeral-storage"] || duration.storage || 0;
-        const gpu = duration["nvidia.com/gpu"] || duration.gpu || 0;
+        const { cpu, memory, storage, gpu } = getEstimatedDurations(exe);
 
         return {
           name,
@@ -193,8 +280,8 @@ const ResourcesView: React.FC = () => {
             exe.metadata.creationTimestamp
           ).toLocaleString(),
           cpu: Number((cpu / 3600).toFixed(5)), // in core-hours (5 decimals to preserve low consumption)
-          memory: Number((memory / 3600).toFixed(5)), // in GB-hours
-          storage: Number((storage / 3600).toFixed(5)), // in GB-hours
+          memory: Number(((memory * 0.1) / 3600).toFixed(5)), // in GB-hours (Argo stores Memory in 100Mi-seconds, so multiply by 0.1)
+          storage: Number(((storage * 0.1) / 3600).toFixed(5)), // in GB-hours (Argo stores Storage in 100Mi-seconds, so multiply by 0.1)
           gpu: Number((gpu / 3600).toFixed(5)), // in GPU-hours
           fill: COLORS[index % COLORS.length] // Inject color directly into data
         };
@@ -205,44 +292,33 @@ const ResourcesView: React.FC = () => {
       .map(([date, data]) => ({
         date,
         cpu: Number((data.cpu / 3600).toFixed(5)),
-        memory: Number((data.memory / 3600).toFixed(5)),
-        storage: Number((data.storage / 3600).toFixed(5)),
+        memory: Number(((data.memory * 0.1) / 3600).toFixed(5)),
+        storage: Number(((data.storage * 0.1) / 3600).toFixed(5)),
         gpu: Number((data.gpu / 3600).toFixed(5))
       }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    const totalCpu = filteredData.reduce(
-      (acc, exe) => acc + (exe.status?.resourcesDuration?.cpu || 0),
-      0
-    );
-    const totalMem = filteredData.reduce(
-      (acc, exe) => acc + (exe.status?.resourcesDuration?.memory || 0),
-      0
-    );
-    const totalStorage = filteredData.reduce(
-      (acc, exe) =>
-        acc +
-        (exe.status?.resourcesDuration?.["ephemeral-storage"] ||
-          exe.status?.resourcesDuration?.storage ||
-          0),
-      0
-    );
-    const totalGpu = filteredData.reduce(
-      (acc, exe) =>
-        acc +
-        (exe.status?.resourcesDuration?.["nvidia.com/gpu"] ||
-          exe.status?.resourcesDuration?.gpu ||
-          0),
-      0
-    );
+    // Reduce over estimated durations for totals
+    let totalCpu = 0;
+    let totalMem = 0;
+    let totalStorage = 0;
+    let totalGpu = 0;
+
+    filteredData.forEach((exe) => {
+      const ests = getEstimatedDurations(exe);
+      totalCpu += ests.cpu;
+      totalMem += ests.memory;
+      totalStorage += ests.storage;
+      totalGpu += ests.gpu;
+    });
 
     return {
       workflowChartData,
       dailyChartData,
-      totalCpu: (totalCpu / 3600).toFixed(2),
-      totalMem: (totalMem / 3600).toFixed(2),
-      totalStorage: (totalStorage / 3600).toFixed(2),
-      totalGpu: (totalGpu / 3600).toFixed(2)
+      totalCpu: (totalCpu / 3600).toFixed(4),
+      totalMem: ((totalMem * 0.1) / 3600).toFixed(4),
+      totalStorage: ((totalStorage * 0.1) / 3600).toFixed(4),
+      totalGpu: (totalGpu / 3600).toFixed(4)
     };
   }, [filteredData]);
 
@@ -348,14 +424,14 @@ const ResourcesView: React.FC = () => {
             <CpuChipIcon className="w-8 h-8 text-blue-600" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm text-gray-500 font-medium uppercase tracking-wider truncate">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider truncate mb-1">
               Total CPU
             </p>
-            <h2 className="text-2xl font-bold text-gray-900 truncate">
-              {stats.totalCpu}{" "}
-              <span className="text-sm font-normal text-gray-400 italic">
-                core-hours
-              </span>
+            <h2
+              className="text-lg font-bold text-gray-900 truncate"
+              title={`${stats.totalCpu} core-hours`}
+            >
+              {formatCpu(Number(stats.totalCpu))}
             </h2>
           </div>
         </div>
@@ -364,14 +440,14 @@ const ResourcesView: React.FC = () => {
             <CircleStackIcon className="w-8 h-8 text-indigo-600" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm text-gray-500 font-medium uppercase tracking-wider truncate">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider truncate mb-1">
               Total Memory
             </p>
-            <h2 className="text-2xl font-bold text-gray-900 truncate">
-              {stats.totalMem}{" "}
-              <span className="text-sm font-normal text-gray-400 italic">
-                GB-hours
-              </span>
+            <h2
+              className="text-lg font-bold text-gray-900 truncate"
+              title={`${stats.totalMem} GB-hours`}
+            >
+              {formatBytes(Number(stats.totalMem))}
             </h2>
           </div>
         </div>
@@ -380,14 +456,14 @@ const ResourcesView: React.FC = () => {
             <ServerStackIcon className="w-8 h-8 text-emerald-600" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm text-gray-500 font-medium uppercase tracking-wider truncate">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider truncate mb-1">
               Total Storage
             </p>
-            <h2 className="text-2xl font-bold text-gray-900 truncate">
-              {stats.totalStorage}{" "}
-              <span className="text-sm font-normal text-gray-400 italic">
-                GB-hours
-              </span>
+            <h2
+              className="text-lg font-bold text-gray-900 truncate"
+              title={`${stats.totalStorage} GB-hours`}
+            >
+              {formatBytes(Number(stats.totalStorage))}
             </h2>
           </div>
         </div>
@@ -396,14 +472,14 @@ const ResourcesView: React.FC = () => {
             <ComputerDesktopIcon className="w-8 h-8 text-purple-600" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm text-gray-500 font-medium uppercase tracking-wider truncate">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wider truncate mb-1">
               Total GPU
             </p>
-            <h2 className="text-2xl font-bold text-gray-900 truncate">
-              {stats.totalGpu}{" "}
-              <span className="text-sm font-normal text-gray-400 italic">
-                GPU-hours
-              </span>
+            <h2
+              className="text-lg font-bold text-gray-900 truncate"
+              title={`${stats.totalGpu} GPU-hours`}
+            >
+              {formatGpu(Number(stats.totalGpu))}
             </h2>
           </div>
         </div>
