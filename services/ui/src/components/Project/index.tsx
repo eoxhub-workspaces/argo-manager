@@ -44,6 +44,7 @@ import * as api from "../../utils/api";
 import generateSteppedManifest from "../../utils/generators/step";
 import { validateK8sYaml } from "../../utils/k8sValidation";
 import { DefaultIngestionModal } from "../modals/DefaultIngestionModal";
+import { SubmitWorkflowModal } from "../modals/SubmitWorkflowModal";
 
 export default function Project() {
   const { height } = useWindowDimensions();
@@ -64,6 +65,7 @@ export default function Project() {
   const [runAfterSaveAction, setRunAfterSaveAction] = useState(false);
   const [pendingManifest, setPendingManifest] = useState<any>(null);
   const [pendingSyncToken, setPendingSyncToken] = useState<string | null>(null);
+  const [executingWorkflow, setExecutingWorkflow] = useState<any | null>(null);
   const [templateToEdit, setTemplateToEdit] = useState<ITemplateNode | null>(
     null
   );
@@ -77,6 +79,25 @@ export default function Project() {
   const [config, setConfig] = useState<api.AppConfig | null>(null);
 
   const { filename, mode } = useParams<{ filename?: string; mode?: string }>();
+
+  const [isDirty, setIsDirty] = useState(false);
+  const isLoadedRef = useRef(false);
+
+  useEffect(() => {
+    isLoadedRef.current = false;
+    setIsDirty(false);
+  }, [filename]);
+
+  useEffect(() => {
+    if (nodes && Object.keys(nodes).length > 0) {
+      if (!isLoadedRef.current) {
+        isLoadedRef.current = true;
+      } else {
+        setIsDirty(true);
+      }
+    }
+  }, [nodes, connections, canvasPosition]);
+
   const navigate = useNavigate();
   const [currentFilename, setCurrentFilename] = useState(
     filename || initialName
@@ -188,6 +209,81 @@ export default function Project() {
     executeSave(false, manifestToSave, pendingSyncToken, runAfterSaveAction);
   };
 
+  const finalizeSubmission = async (workflow: any) => {
+    const submitToast = toast.loading("Submitting execution...");
+    try {
+      await api.submitExecution(workflow);
+      toast.success("Execution submitted successfully!", { id: submitToast });
+      setExecutingWorkflow(null);
+      navigate("/executions");
+    } catch (error: any) {
+      toast.error(`Submission failed: ${error.message || "Unknown error"}`, {
+        id: submitToast
+      });
+    }
+  };
+
+  const handleRunOnlyClick = async () => {
+    try {
+      const visualState = {
+        nodes,
+        connections,
+        canvasPosition
+      };
+
+      const flatConnections = connections.map((conn) => ({
+        source: conn[0],
+        target: conn[1]
+      }));
+
+      const options = config
+        ? {
+            profileData: initialProfile
+              ? config.profiles[initialProfile]
+              : null,
+            ephemeralVol: initialEphemeral
+              ? { ...config.ephemeralVolume, storage: initialEphemeralSize }
+              : null
+          }
+        : {};
+
+      let parsed = generateSteppedManifest(
+        { nodes, connections: flatConnections },
+        visualState,
+        baseYamlRef.current,
+        initialKind,
+        initialName,
+        options
+      );
+
+      if (parsed.kind === "CronWorkflow") {
+        parsed = {
+          apiVersion: parsed.apiVersion || "argoproj.io/v1alpha1",
+          kind: "Workflow",
+          metadata: {
+            generateName: (parsed.metadata.name || "cron") + "-",
+            namespace: parsed.metadata.namespace,
+            labels: {
+              ...parsed.metadata.labels,
+              "workflows.argoproj.io/cron-workflow": parsed.metadata.name,
+              "workflows.argoproj.io/workflow-template": parsed.metadata.name
+            }
+          },
+          spec: parsed.spec?.workflowSpec || {}
+        };
+      }
+
+      const params = parsed?.spec?.arguments?.parameters || [];
+      if (params.length > 0) {
+        setExecutingWorkflow(parsed);
+      } else {
+        await finalizeSubmission(parsed);
+      }
+    } catch (err: any) {
+      toast.error(`Execution failed: ${err.message || "Unknown error"}`);
+    }
+  };
+
   const executeSave = async (
     applyDefaults: boolean,
     manifest: any,
@@ -200,6 +296,8 @@ export default function Project() {
     const saveToast = toast.loading(
       runAfterSave ? "Saving and preparing run..." : "Saving workflow..."
     );
+
+    let finalManifest = manifest;
 
     try {
       if (runAfterSave && syncToken) {
@@ -227,7 +325,22 @@ export default function Project() {
         setCurrentFilename(name);
       }
 
+      isLoadedRef.current = false;
+      setIsDirty(false);
+
       setShowIngestionModal(false);
+
+      if (applyDefaults) {
+        try {
+          const rawYaml = await api.getWorkflow(name);
+          finalManifest = YAML.parse(rawYaml);
+        } catch (e) {
+          console.error(
+            "Failed to re-fetch workflow after applying defaults",
+            e
+          );
+        }
+      }
 
       if (runAfterSave && syncToken) {
         toast.loading("Waiting for GitOps reconciliation...", {
@@ -253,10 +366,33 @@ export default function Project() {
         }
 
         if (synced) {
-          toast.loading("Submitting workflow...", { id: saveToast });
-          await api.submitExecution(manifest);
-          toast.success("Workflow saved and submitted!", { id: saveToast });
-          navigate("/executions");
+          toast.dismiss(saveToast);
+
+          let parsed = finalManifest;
+          if (parsed.kind === "CronWorkflow") {
+            parsed = {
+              apiVersion: parsed.apiVersion || "argoproj.io/v1alpha1",
+              kind: "Workflow",
+              metadata: {
+                generateName: (parsed.metadata.name || "cron") + "-",
+                namespace: parsed.metadata.namespace,
+                labels: {
+                  ...parsed.metadata.labels,
+                  "workflows.argoproj.io/cron-workflow": parsed.metadata.name,
+                  "workflows.argoproj.io/workflow-template":
+                    parsed.metadata.name
+                }
+              },
+              spec: parsed.spec?.workflowSpec || {}
+            };
+          }
+
+          const params = parsed?.spec?.arguments?.parameters || [];
+          if (params.length > 0) {
+            setExecutingWorkflow(parsed);
+          } else {
+            await finalizeSubmission(parsed);
+          }
         } else {
           toast.error(
             "Workflow saved but GitOps reconciliation timed out. You may need to run it manually.",
@@ -746,6 +882,14 @@ export default function Project() {
         />
       )}
 
+      {executingWorkflow && (
+        <SubmitWorkflowModal
+          workflow={executingWorkflow}
+          onClose={() => setExecutingWorkflow(null)}
+          onSubmit={finalizeSubmission}
+        />
+      )}
+
       <div className="flex flex-col flex-1">
         <Header name={currentFilename} />
 
@@ -818,22 +962,46 @@ export default function Project() {
                     <PlusIcon className="w-4" />
                     <span>Template</span>
                   </button>
-                  <button
-                    className="flex space-x-1 btn-util"
-                    type="button"
-                    onClick={() => handleSaveClick(false)}
-                  >
-                    <CloudArrowUpIcon className="w-4" />
-                    <span>Save</span>
-                  </button>
-                  <button
-                    className="flex space-x-1 btn-util bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                    type="button"
-                    onClick={() => handleSaveClick(true)}
-                  >
-                    <PlayIcon className="w-4" />
-                    <span>Save & Run</span>
-                  </button>
+                  {isDirty ? (
+                    <>
+                      <button
+                        className="flex space-x-1 btn-util"
+                        type="button"
+                        onClick={() => handleSaveClick(false)}
+                      >
+                        <CloudArrowUpIcon className="w-4" />
+                        <span>Save</span>
+                      </button>
+                      <button
+                        className="flex space-x-1 btn-util bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                        type="button"
+                        onClick={() => handleSaveClick(true)}
+                      >
+                        <PlayIcon className="w-4" />
+                        <span>Save & Run</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="flex space-x-1 btn-util text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed"
+                        type="button"
+                        disabled={true}
+                        title="No changes to save"
+                      >
+                        <CloudArrowUpIcon className="w-4" />
+                        <span>Save</span>
+                      </button>
+                      <button
+                        className="flex space-x-1 btn-util bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                        type="button"
+                        onClick={handleRunOnlyClick}
+                      >
+                        <PlayIcon className="w-4" />
+                        <span>Run</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 

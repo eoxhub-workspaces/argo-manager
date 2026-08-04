@@ -16,6 +16,7 @@ import { useTitle } from "../../hooks";
 import Header from "../Project/Header";
 import CodeEditor from "../CodeEditor";
 import { DefaultIngestionModal } from "../modals/DefaultIngestionModal";
+import { SubmitWorkflowModal } from "../modals/SubmitWorkflowModal";
 
 export default function CodeProject() {
   const { filename } = useParams<{ filename?: string }>();
@@ -32,6 +33,7 @@ export default function CodeProject() {
     filename || initialName
   );
   const [yamlContent, setYamlContent] = useState<string>("");
+  const [originalYaml, setOriginalYaml] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [config, setConfig] = useState<api.AppConfig | null>(null);
   const [executions, setExecutions] = useState<api.WorkflowExecution[]>([]);
@@ -40,6 +42,7 @@ export default function CodeProject() {
     filename ? "runs" : null
   );
   const [showIngestionModal, setShowIngestionModal] = useState(false);
+  const [executingWorkflow, setExecutingWorkflow] = useState<any | null>(null);
 
   useTitle([currentFilename || "New workflow", "Code Mode"].join(" | "));
 
@@ -106,6 +109,7 @@ export default function CodeProject() {
         if (filename) {
           const content = await api.getWorkflow(decodeURIComponent(filename));
           setYamlContent(content);
+          setOriginalYaml(content);
         } else if (initialName) {
           const logicalInitialName = initialName.replace(/\.ya?ml$/i, "");
           let baseYaml = `apiVersion: argoproj.io/v1alpha1
@@ -140,6 +144,7 @@ spec:
           }
 
           setYamlContent(baseYaml);
+          setOriginalYaml(baseYaml);
         }
       } catch (err) {
         toast.error("Failed to load workflow or configuration");
@@ -161,8 +166,43 @@ spec:
 
   const [runAfterSaveAction, setRunAfterSaveAction] = useState(false);
 
+  const hasChanges = yamlContent !== originalYaml;
+
   const handleSaveAndRunClick = () => {
     handleSaveClick(true);
+  };
+
+  const handleRunOnlyClick = async () => {
+    try {
+      let parsed = YAML.parse(yamlContent);
+
+      // If it's a CronWorkflow, we must extract the workflowSpec to run it immediately
+      if (parsed.kind === "CronWorkflow") {
+        parsed = {
+          apiVersion: parsed.apiVersion || "argoproj.io/v1alpha1",
+          kind: "Workflow",
+          metadata: {
+            generateName: (parsed.metadata.name || "cron") + "-",
+            namespace: parsed.metadata.namespace,
+            labels: {
+              ...parsed.metadata.labels,
+              "workflows.argoproj.io/cron-workflow": parsed.metadata.name,
+              "workflows.argoproj.io/workflow-template": parsed.metadata.name
+            }
+          },
+          spec: parsed.spec?.workflowSpec || {}
+        };
+      }
+
+      const params = parsed?.spec?.arguments?.parameters || [];
+      if (params.length > 0) {
+        setExecutingWorkflow(parsed);
+      } else {
+        await finalizeSubmission(parsed);
+      }
+    } catch (err: any) {
+      toast.error(`Execution failed: ${err.message || "Unknown error"}`);
+    }
   };
 
   const handleSaveClick = async (runAfterSave = false) => {
@@ -202,6 +242,21 @@ spec:
     }
   };
 
+  const finalizeSubmission = async (workflow: any) => {
+    const submitToast = toast.loading("Submitting execution...");
+    try {
+      await api.submitExecution(workflow);
+      toast.success("Execution submitted successfully!", { id: submitToast });
+      setExecutingWorkflow(null);
+      if (activePanel !== "runs") setActivePanel("runs");
+      setTimeout(fetchExecutions, 1000);
+    } catch (error: any) {
+      toast.error(`Submission failed: ${error.message || "Unknown error"}`, {
+        id: submitToast
+      });
+    }
+  };
+
   const executeSave = async (
     applyDefaults: boolean,
     contentToSave: string,
@@ -211,6 +266,8 @@ spec:
     if (!name) return;
 
     const saveToast = toast.loading("Saving workflow...");
+    let finalContent = contentToSave;
+
     try {
       if (!isNewWorkflow) {
         await api.updateWorkflow(
@@ -233,9 +290,27 @@ spec:
       toast.success("Workflow saved successfully!", { id: saveToast });
       setShowIngestionModal(false);
 
+      fetchHistory();
+
+      if (applyDefaults) {
+        try {
+          // Re-fetch the content to get the backend-injected defaults
+          finalContent = await api.getWorkflow(name);
+          setYamlContent(finalContent);
+          setOriginalYaml(finalContent);
+        } catch (e) {
+          console.error(
+            "Failed to re-fetch workflow after applying defaults",
+            e
+          );
+        }
+      } else {
+        setOriginalYaml(finalContent);
+      }
+
       if (runAfterSave) {
         try {
-          let parsed = YAML.parse(contentToSave);
+          let parsed = YAML.parse(finalContent);
 
           // If it's a CronWorkflow, we must extract the workflowSpec to run it immediately
           if (parsed.kind === "CronWorkflow") {
@@ -256,10 +331,12 @@ spec:
             };
           }
 
-          await api.submitExecution(parsed);
-          toast.success("Workflow executed successfully!");
-          if (activePanel !== "runs") setActivePanel("runs");
-          setTimeout(fetchExecutions, 1000);
+          const params = parsed?.spec?.arguments?.parameters || [];
+          if (params.length > 0) {
+            setExecutingWorkflow(parsed);
+          } else {
+            await finalizeSubmission(parsed);
+          }
         } catch (err: any) {
           toast.error(`Execution failed: ${err.message || "Unknown error"}`);
         }
@@ -351,20 +428,42 @@ spec:
                 <span>Switch to Canvas</span>
               </button>
             )}
-            <button
-              className="flex space-x-1 items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 border-gray-300 focus:outline-none transition-colors"
-              onClick={() => handleSaveClick()}
-            >
-              <CloudArrowUpIcon className="w-4 h-4" />
-              <span>Save</span>
-            </button>
-            <button
-              className="flex space-x-1 items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none transition-colors"
-              onClick={handleSaveAndRunClick}
-            >
-              <PlayIcon className="w-4 h-4" />
-              <span>Save & Run</span>
-            </button>
+            {hasChanges ? (
+              <>
+                <button
+                  className="flex space-x-1 items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 border-gray-300 focus:outline-none transition-colors"
+                  onClick={() => handleSaveClick()}
+                >
+                  <CloudArrowUpIcon className="w-4 h-4" />
+                  <span>Save</span>
+                </button>
+                <button
+                  className="flex space-x-1 items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none transition-colors"
+                  onClick={handleSaveAndRunClick}
+                >
+                  <PlayIcon className="w-4 h-4" />
+                  <span>Save & Run</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="flex space-x-1 items-center px-4 py-1.5 border text-sm font-medium rounded-md text-gray-400 bg-gray-50 border-gray-200 cursor-not-allowed"
+                  disabled={true}
+                  title="No changes to save"
+                >
+                  <CloudArrowUpIcon className="w-4 h-4" />
+                  <span>Save</span>
+                </button>
+                <button
+                  className="flex space-x-1 items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none transition-colors"
+                  onClick={handleRunOnlyClick}
+                >
+                  <PlayIcon className="w-4 h-4" />
+                  <span>Run</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -492,6 +591,13 @@ spec:
         <DefaultIngestionModal
           onConfirm={handleIngestionConfirm}
           onDecline={handleIngestionDecline}
+        />
+      )}
+      {executingWorkflow && (
+        <SubmitWorkflowModal
+          workflow={executingWorkflow}
+          onClose={() => setExecutingWorkflow(null)}
+          onSubmit={finalizeSubmission}
         />
       )}
     </div>

@@ -21,8 +21,68 @@ import {
   DocumentIcon,
   PhotoIcon,
   DocumentTextIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  ListBulletIcon,
+  CpuChipIcon,
+  InboxStackIcon
 } from "@heroicons/react/24/outline";
+
+// Helper function to simplify Argo status messages and determine type
+const parseStatusMessage = (exe: any, specificMessage?: string) => {
+  let rawMessage = specificMessage || exe?.status?.message;
+
+  // If no workflow-level message, check if any nodes have a message (e.g. for pending workflows)
+  if (!rawMessage && exe?.status?.nodes) {
+    const nodesWithMsgs = Object.values(exe.status.nodes).filter(
+      (n: any) => n.message
+    ) as any[];
+    if (nodesWithMsgs.length > 0) {
+      // Prefer quota or forbidden messages, otherwise just take the first one
+      const quotaNode = nodesWithMsgs.find(
+        (n: any) =>
+          n.message.toLowerCase().includes("quota") ||
+          n.message.toLowerCase().includes("forbidden")
+      );
+      rawMessage = (quotaNode || nodesWithMsgs[0]).message;
+    }
+  }
+
+  if (!rawMessage) return null;
+
+  let cleanMessage = rawMessage;
+
+  // Remove "error in entry template execution: "
+  cleanMessage = cleanMessage.replace(
+    /error in entry template execution:\s*/i,
+    ""
+  );
+
+  // Remove pods "pod-name" is forbidden:
+  cleanMessage = cleanMessage.replace(
+    /pods?\s+"[^"]+"\s+is\s+forbidden:\s*/i,
+    ""
+  );
+
+  // Sometimes pod name is without quotes
+  cleanMessage = cleanMessage.replace(
+    /pods?\s+[a-zA-Z0-9-]+\s+is\s+forbidden:\s*/i,
+    ""
+  );
+
+  if (cleanMessage.length > 0) {
+    cleanMessage = cleanMessage.charAt(0).toUpperCase() + cleanMessage.slice(1);
+  }
+
+  const isWarning =
+    cleanMessage.toLowerCase().includes("exceeded quota") ||
+    cleanMessage.toLowerCase().includes("pending");
+
+  return {
+    text: cleanMessage,
+    type: isWarning ? "warning" : "error",
+    original: rawMessage
+  };
+};
 
 const ExecutionsView: React.FC = () => {
   const location = useLocation();
@@ -36,6 +96,7 @@ const ExecutionsView: React.FC = () => {
   const [logsLoading, setLogsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [viewType, setViewType] = useState<"logs" | "details">("logs");
   const [selectedArtifact, setSelectedArtifact] = useState<{
     nodeId: string;
     name: string;
@@ -321,20 +382,17 @@ const ExecutionsView: React.FC = () => {
             });
           }
 
-          // Check for common errors in nodes if workflow failed
-          if (
-            selectedExe.status?.phase === "Failed" ||
-            selectedExe.status?.phase === "Error"
-          ) {
-            const nodesWithErrors = Object.values(
-              selectedExe.status?.nodes || {}
-            ).filter((n: any) => n.phase === "Failed" || n.phase === "Error");
-            if (nodesWithErrors.length > 0) {
-              overview.push("\nNode Errors:");
-              nodesWithErrors.forEach((n: any) => {
-                overview.push(`- ${n.name}: ${n.message || "Unknown error"}`);
-              });
-            }
+          // Check for messages in nodes (common for resource quota issues, etc.)
+          const nodesWithMessages = Object.values(
+            selectedExe.status?.nodes || {}
+          ).filter((n: any) => n.message);
+
+          if (nodesWithMessages.length > 0) {
+            overview.push("\nNode Messages:");
+            nodesWithMessages.forEach((n: any) => {
+              const msgObj = parseStatusMessage(selectedExe, n.message);
+              overview.push(`- ${n.name}: ${msgObj?.text || n.message}`);
+            });
           }
 
           setLogs(overview.join("\n"));
@@ -351,21 +409,23 @@ const ExecutionsView: React.FC = () => {
           const node = selectedExe.status.nodes[id];
           if (node.startedAt) startTime = node.startedAt;
           if (node.finishedAt) endTime = node.finishedAt;
+        } else if (selectedExe.status?.finishedAt) {
+          endTime = selectedExe.status.finishedAt;
         }
       }
 
-      // Buffer start time by 1 hour to account for clock skew and DAGs
+      // Buffer start time by 24 hours to safely absorb timezone offsets, clock drift, and old runs
       if (startTime) {
-        const dt = new Date(startTime);
-        dt.setHours(dt.getHours() - 1);
-        startTime = dt.toISOString();
+        startTime = new Date(
+          new Date(startTime).getTime() - 24 * 3600 * 1000
+        ).toISOString();
       }
 
-      // Buffer end time by 1 hour if it exists
+      // Buffer end time by 24 hours to safely absorb timezone offsets and clock drift
       if (endTime) {
-        const dt = new Date(endTime);
-        dt.setHours(dt.getHours() + 1);
-        endTime = dt.toISOString();
+        endTime = new Date(
+          new Date(endTime).getTime() + 24 * 3600 * 1000
+        ).toISOString();
       }
 
       const workflowName = selectedExe?.metadata.name;
@@ -424,6 +484,11 @@ const ExecutionsView: React.FC = () => {
       case "Running":
         return (
           <ArrowPathIcon className={`${size} text-blue-500 animate-spin`} />
+        );
+      case "Pending":
+      case "PodInitializing":
+        return (
+          <ClockIcon className={`${size} text-yellow-500 animate-pulse`} />
         );
       case "Unknown (Loki Only)":
       case "Unknown (Loki)":
@@ -549,7 +614,10 @@ const ExecutionsView: React.FC = () => {
                                 : exe.status?.phase === "Failed" ||
                                     exe.status?.phase === "Error"
                                   ? "bg-red-100 text-red-800 border-red-200"
-                                  : "bg-gray-100 text-gray-800 border-gray-200"
+                                  : exe.status?.phase === "Pending" ||
+                                      exe.status?.phase === "PodInitializing"
+                                    ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                                    : "bg-gray-100 text-gray-800 border-gray-200"
                           }`}
                         >
                           {exe.status?.phase || "Pending"}
@@ -564,6 +632,22 @@ const ExecutionsView: React.FC = () => {
                           ).toLocaleString()}
                         </p>
                       </div>
+                      {(() => {
+                        const msgObj = parseStatusMessage(exe);
+                        if (!msgObj) return null;
+                        return (
+                          <p
+                            className={`text-[10px] mt-1 italic truncate max-w-md ${
+                              msgObj.type === "warning"
+                                ? "text-yellow-600"
+                                : "text-red-600"
+                            }`}
+                            title={msgObj.original}
+                          >
+                            {msgObj.text}
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="ml-4 flex-shrink-0 flex items-center space-x-2">
@@ -614,6 +698,22 @@ const ExecutionsView: React.FC = () => {
                     {selectedExe.status?.phase}
                   </span>
                 </p>
+                {(() => {
+                  const msgObj = parseStatusMessage(selectedExe);
+                  if (!msgObj) return null;
+                  return (
+                    <p
+                      className={`text-sm font-medium mt-2 p-2 rounded border ${
+                        msgObj.type === "warning"
+                          ? "text-yellow-700 bg-yellow-50 border-yellow-200"
+                          : "text-red-600 bg-red-50 border-red-100"
+                      }`}
+                      title={msgObj.original}
+                    >
+                      {msgObj.text}
+                    </p>
+                  );
+                })()}
                 <p className="text-xs text-gray-400 mt-1">
                   Namespace: {selectedExe.metadata.namespace}
                 </p>
@@ -690,7 +790,7 @@ const ExecutionsView: React.FC = () => {
                       seen.add(id);
                       const node = nodes[id];
                       if (!node) return;
-                      orderedNodes.push({ ...node, depth });
+                      orderedNodes.push({ ...node, id, depth });
                       if (node.children) {
                         node.children.forEach((childId: string) =>
                           traverse(childId, depth + 1)
@@ -701,7 +801,7 @@ const ExecutionsView: React.FC = () => {
                     traverse((rootNode as any).id, 0);
 
                     return orderedNodes.map((node: any) => {
-                      const cleanName = node.name.startsWith(
+                      let cleanName = node.name.startsWith(
                         selectedExe.metadata.name
                       )
                         ? node.name === selectedExe.metadata.name
@@ -710,6 +810,20 @@ const ExecutionsView: React.FC = () => {
                               .substring(selectedExe.metadata.name.length)
                               .replace(/^[.-]/, "")
                         : node.name;
+
+                      // Clean up step indices (e.g. "[0].print-timestamp" -> "print-timestamp")
+                      cleanName = cleanName.replace(/^\[\d+\]\./, "");
+
+                      // Format step group names (e.g. "[0]" -> "Step Group #1")
+                      if (
+                        node.type === "StepGroup" &&
+                        /^\[\d+\]$/.test(cleanName)
+                      ) {
+                        const index = cleanName.match(/\d+/)?.[0];
+                        if (index !== undefined) {
+                          cleanName = `Step Group #${Number(index) + 1}`;
+                        }
+                      }
 
                       const artifacts = [
                         ...(node.inputs?.artifacts || []).map((a: any) => ({
@@ -722,6 +836,9 @@ const ExecutionsView: React.FC = () => {
                         }))
                       ];
 
+                      const isRoot =
+                        selectedExe && node.id === selectedExe.metadata.name;
+
                       return (
                         <React.Fragment key={node.id}>
                           <li
@@ -729,9 +846,23 @@ const ExecutionsView: React.FC = () => {
                             style={{
                               paddingLeft: `${node.depth * 1.5 + 0.75}rem`
                             }}
-                            onClick={() =>
-                              node.type === "Pod" && fetchLogs(node.id)
-                            }
+                            onClick={() => {
+                              setSelectedNodeId(node.id);
+                              if (isRoot) {
+                                fetchLogs(node.id, "workflow");
+                              } else if (
+                                node.type !== "StepGroup" &&
+                                node.type !== "DAG"
+                              ) {
+                                fetchLogs(node.id, "pod");
+                              } else {
+                                setLogs(`Logs are only available for actual step executions (Pods).
+
+                      Node: ${node.name}
+                      Type: ${node.type}
+                      Phase: ${node.phase}`);
+                              }
+                            }}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center space-x-2">
@@ -743,12 +874,17 @@ const ExecutionsView: React.FC = () => {
                                   ({node.type})
                                 </span>
                               </div>
-                              {node.type === "Pod" && (
+                              {(isRoot ||
+                                (node.type !== "StepGroup" &&
+                                  node.type !== "DAG")) && (
                                 <div className="flex space-x-1">
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      fetchLogs(node.id);
+                                      fetchLogs(
+                                        node.id,
+                                        isRoot ? "workflow" : "pod"
+                                      );
                                     }}
                                     className="p-1 rounded hover:bg-gray-200 text-gray-500 transition-colors"
                                     title="View Logs"
@@ -847,24 +983,38 @@ const ExecutionsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Logs / Artifact Panel */}
+            {/* Logs / Artifact / Details Panel */}
             <div className="w-2/3 bg-[#1e1e1e] rounded-lg overflow-hidden flex flex-col shadow-lg border border-gray-800 min-h-0">
               <div className="p-4 bg-gray-900 border-b border-gray-800 font-medium text-gray-300 flex justify-between items-center flex-shrink-0">
-                <div className="flex items-center space-x-2">
-                  {selectedArtifact ? (
-                    <>
-                      <DocumentIcon className="h-4 w-4 text-indigo-400" />
-                      <span>Artifact Preview: {selectedArtifact.name}</span>
-                    </>
-                  ) : (
-                    <>
-                      <CommandLineIcon className="h-4 w-4" />
-                      <span>Logs</span>
-                    </>
-                  )}
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2">
+                    {selectedArtifact ? (
+                      <>
+                        <DocumentIcon className="h-4 w-4 text-indigo-400" />
+                        <span>Artifact Preview: {selectedArtifact.name}</span>
+                      </>
+                    ) : (
+                      <div className="flex bg-gray-800 p-1 rounded-md">
+                        <button
+                          onClick={() => setViewType("logs")}
+                          className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center ${viewType === "logs" ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"}`}
+                        >
+                          <CommandLineIcon className="h-3.5 w-3.5 mr-1.5" />
+                          Logs
+                        </button>
+                        <button
+                          onClick={() => setViewType("details")}
+                          className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center ${viewType === "details" ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"}`}
+                        >
+                          <ListBulletIcon className="h-3.5 w-3.5 mr-1.5" />
+                          Details
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {!selectedArtifact && (
+                  {!selectedArtifact && viewType === "logs" && (
                     <form onSubmit={handleLogSearch} className="relative">
                       <input
                         type="text"
@@ -951,6 +1101,190 @@ const ExecutionsView: React.FC = () => {
                       </a>
                     </div>
                   )
+                ) : viewType === "details" ? (
+                  <div className="space-y-8 text-gray-300">
+                    {/* Execution Parameters */}
+                    <div>
+                      <h4 className="flex items-center text-sm font-bold text-blue-400 mb-4 uppercase tracking-wider">
+                        <InboxStackIcon className="w-4 h-4 mr-2" />
+                        Input Parameters
+                      </h4>
+                      {selectedExe?.spec?.arguments?.parameters ? (
+                        <div className="grid grid-cols-1 gap-2">
+                          {selectedExe.spec.arguments.parameters.map(
+                            (p: any) => (
+                              <div
+                                key={p.name}
+                                className="bg-gray-800/50 rounded p-3 border border-gray-700 flex justify-between items-center"
+                              >
+                                <span className="font-semibold text-gray-400">
+                                  {p.name}
+                                </span>
+                                <span className="text-blue-300 font-mono break-all ml-4">
+                                  {p.value}
+                                </span>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 italic">No parameters.</p>
+                      )}
+                    </div>
+
+                    {/* Resources Consumption */}
+                    <div>
+                      <h4 className="flex items-center text-sm font-bold text-green-400 mb-4 uppercase tracking-wider">
+                        <CpuChipIcon className="w-4 h-4 mr-2" />
+                        Resources Consumption
+                      </h4>
+                      {selectedExe?.status?.resourcesDuration ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {Object.entries(
+                            selectedExe.status.resourcesDuration
+                          ).map(([res, duration]: [string, any]) => {
+                            let formattedValue = `${duration}s`;
+                            if (duration > 3600) {
+                              formattedValue = `${(duration / 3600).toFixed(2)}h`;
+                            } else if (duration > 60) {
+                              formattedValue = `${(duration / 60).toFixed(2)}m`;
+                            }
+
+                            return (
+                              <div
+                                key={res}
+                                className="bg-gray-800/50 rounded-lg p-4 border border-gray-700 flex flex-col"
+                              >
+                                <span className="text-[10px] text-gray-500 uppercase font-bold mb-1">
+                                  {res}
+                                </span>
+                                <span className="text-xl font-bold text-white font-mono">
+                                  {formattedValue}
+                                </span>
+                                <span className="text-[10px] text-gray-500 mt-1">
+                                  Total {res} duration
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="bg-gray-800/30 rounded p-6 text-center border border-dashed border-gray-700">
+                          <p className="text-gray-500 italic">
+                            Resource duration metrics not yet available.
+                          </p>
+                          <p className="text-[10px] text-gray-600 mt-1">
+                            Argo calculates these upon step/workflow completion.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Node Specific Details */}
+                    {selectedNodeId &&
+                      selectedNodeId !== "workflow-overview" &&
+                      selectedExe?.status?.nodes?.[selectedNodeId] && (
+                        <div>
+                          <h4 className="flex items-center text-sm font-bold text-purple-400 mb-4 uppercase tracking-wider">
+                            <DocumentTextIcon className="w-4 h-4 mr-2" />
+                            Step Details:{" "}
+                            {selectedExe.status.nodes[selectedNodeId].name
+                              .split(".")
+                              .pop()}
+                          </h4>
+                          <div className="bg-gray-800/50 rounded p-4 border border-gray-700 space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Phase:</span>
+                              <span
+                                className={`font-bold ${
+                                  selectedExe.status.nodes[selectedNodeId]
+                                    .phase === "Succeeded"
+                                    ? "text-green-400"
+                                    : "text-orange-400"
+                                }`}
+                              >
+                                {selectedExe.status.nodes[selectedNodeId].phase}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Started:</span>
+                              <span>
+                                {new Date(
+                                  selectedExe.status.nodes[selectedNodeId]
+                                    .startedAt
+                                ).toLocaleString()}
+                              </span>
+                            </div>
+                            {selectedExe.status.nodes[selectedNodeId]
+                              .finishedAt && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Finished:</span>
+                                <span>
+                                  {new Date(
+                                    selectedExe.status.nodes[selectedNodeId]
+                                      .finishedAt
+                                  ).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
+                            {selectedExe.status.nodes[selectedNodeId].message &&
+                              (() => {
+                                const msgObj = parseStatusMessage(
+                                  selectedExe,
+                                  selectedExe.status.nodes[selectedNodeId]
+                                    .message
+                                );
+                                if (!msgObj) return null;
+                                return (
+                                  <div className="mt-4 pt-4 border-t border-gray-700">
+                                    <span
+                                      className={`text-xs font-bold block mb-2 ${
+                                        msgObj.type === "warning"
+                                          ? "text-yellow-400"
+                                          : "text-red-400"
+                                      }`}
+                                    >
+                                      Message:
+                                    </span>
+                                    <p
+                                      className="text-xs text-gray-300 whitespace-pre-wrap"
+                                      title={msgObj.original}
+                                    >
+                                      {msgObj.text}
+                                    </p>
+                                  </div>
+                                );
+                              })()}
+                            {selectedExe.status.nodes[selectedNodeId]
+                              .resourcesDuration && (
+                              <div className="mt-4 pt-4 border-t border-gray-700">
+                                <span className="text-xs font-bold text-gray-400 block mb-2">
+                                  Step Resource Usage:
+                                </span>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {Object.entries(
+                                    selectedExe.status.nodes[selectedNodeId]
+                                      .resourcesDuration
+                                  ).map(([res, dur]: [string, any]) => (
+                                    <div
+                                      key={res}
+                                      className="text-xs flex justify-between bg-black/20 p-2 rounded"
+                                    >
+                                      <span className="text-gray-500">
+                                        {res}:
+                                      </span>
+                                      <span className="text-white font-mono">
+                                        {dur}s
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                  </div>
                 ) : logsLoading ? (
                   <div className="flex items-center space-x-2 text-gray-500">
                     <Spinner className="w-3 h-3" />
