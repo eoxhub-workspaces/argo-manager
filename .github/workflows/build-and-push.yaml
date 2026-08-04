@@ -43,12 +43,22 @@ jobs:
           flavor: |
             latest=false
 
+      - name: Determine Docker Target Stage
+        run: |
+          # Detect if git tag contains "-dev" to select the development build target
+          if [[ "${{ github.ref_name }}" == *"-dev"* ]]; then
+            echo "DOCKER_TARGET=development" >> $GITHUB_ENV
+          else
+            echo "DOCKER_TARGET=production" >> $GITHUB_ENV
+          fi
+
       - name: Build Docker image
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           load: true
+          target: ${{ env.DOCKER_TARGET }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main

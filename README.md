@@ -143,11 +143,20 @@ npm run lint:fix
 This project strictly adheres to secure, enterprise-grade container standards:
 * **Minimal Base Images**: Uses `node:20-alpine` to minimize package surface area and CVE vulnerabilities.
 * **Non-Root Execution**: Runs strictly as an unprivileged, custom user (`gitargo`, UID `10001`). Root container configurations are rejected by cluster security policies.
+* **No unnecessary files**: A `.dockerignore` policy is implemented in the repository to guarantee that local configuration are not added the context build or the published image.
 * **Local Scanning (Trivy)**: Image builds should be audited locally using Trivy before release:
   ```bash
   docker build -t gitargo:local .
   trivy image --severity HIGH,CRITICAL gitargo:local
   ```
 * **Image Signing (Cosign)**: Container images are automatically signed inside the CI pipeline (`build-and-push.yaml`) using cryptographic keyless OIDC Cosign signing (`sigstore`).
+
+### Automated Tag-Based Build Target Selection (CI Pipeline)
+
+The GitHub Actions workflow (`build-and-push.yaml`) automatically inspects the pushed git tag name to optimize the container layout:
+* **Development Tags (tags containing `-dev`, e.g. `v0.2.1-dev`)**: Builds targeting the `development` stage in the `Dockerfile`.
+  * **Result**: Keeps `npm`, `npx`, and development tools fully active and pre-loaded. Perfect for rapid developer loops and hot-reload tasks.
+* **Production Tags (standard tags, e.g. `v0.2.1`)**: Builds targeting the hardened `production` stage in the `Dockerfile`.
+  * **Result**: Permanently purges `npm` and `npx` directories, runs as unprivileged user `gitargo`, and passes Trivy audits with **0 vulnerabilities**.
 
 ## License

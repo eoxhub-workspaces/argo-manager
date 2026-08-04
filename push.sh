@@ -13,7 +13,7 @@ fi
 
 echo "Building frontend..."
 cd services/ui
-npm install --legacy-peer-deps
+npm install
 npm run build
 cd ../..
 
