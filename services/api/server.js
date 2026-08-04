@@ -201,13 +201,39 @@ const DEFAULT_PROFILES = {
   }
 };
 
+// Helper to safely parse JSON strings from environment, stripping trailing commas
+const parseEnvJson = (envVal, defaultVal) => {
+  if (!envVal) return defaultVal;
+  try {
+    // Strip trailing commas from JSON arrays/objects to make it robust against typos
+    const cleanStr = envVal.replace(/,(\s*[\]}])/g, "$1");
+    return JSON.parse(cleanStr);
+  } catch (e) {
+    console.error(`Failed to parse JSON env value, using default:`, e.message);
+    return defaultVal;
+  }
+};
+
 let ARGO_PROFILES = DEFAULT_PROFILES;
 if (process.env.ARGO_PROFILES) {
-  try {
-    ARGO_PROFILES = JSON.parse(process.env.ARGO_PROFILES);
-  } catch (e) {
-    console.error("Failed to parse ARGO_PROFILES from environment, using defaults.", e);
-  }
+  ARGO_PROFILES = parseEnvJson(process.env.ARGO_PROFILES, DEFAULT_PROFILES);
+}
+
+const DEFAULT_TOLERATIONS = [
+  { key: "nvidia.com/gpu", operator: "Exists", effect: "NoSchedule", label: "NVIDIA GPU Pool" },
+  { key: "dedicated", operator: "Equal", value: "high-mem", effect: "NoSchedule", label: "High-Memory Dedicated Pool" }
+];
+
+const DEFAULT_NODE_SELECTORS = [];
+
+let ARGO_AVAILABLE_TOLERATIONS = DEFAULT_TOLERATIONS;
+if (process.env.ARGO_AVAILABLE_TOLERATIONS) {
+  ARGO_AVAILABLE_TOLERATIONS = parseEnvJson(process.env.ARGO_AVAILABLE_TOLERATIONS, DEFAULT_TOLERATIONS);
+}
+
+let ARGO_AVAILABLE_NODE_SELECTORS = DEFAULT_NODE_SELECTORS;
+if (process.env.ARGO_AVAILABLE_NODE_SELECTORS) {
+  ARGO_AVAILABLE_NODE_SELECTORS = parseEnvJson(process.env.ARGO_AVAILABLE_NODE_SELECTORS, DEFAULT_NODE_SELECTORS);
 }
 
 const EPHEMERAL_VOLUME_CONFIG = {
@@ -260,9 +286,10 @@ apiRouter.use((req, res, next) => {
 apiRouter.get("/config", (req, res) => {
   res.json({
     profiles: ARGO_PROFILES,
+    availableTolerations: ARGO_AVAILABLE_TOLERATIONS,
+    availableNodeSelectors: ARGO_AVAILABLE_NODE_SELECTORS,
     ephemeralVolume: EPHEMERAL_VOLUME_CONFIG,
     allowPublishing: process.env.ALLOW_PUBLISHING === "true",
-    experimentalCanvas: process.env.EXPERIMENTAL_CANVAS === "true",
     logViewerUrl: process.env.LOG_VIEWER_URL || `https://hub-test.eox.at/services/eoxhub-gateway/cif/log-viewer/search`,
     defaults: {
       namespace: process.env.ARGO_NAMESPACE || "default",

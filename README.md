@@ -8,18 +8,19 @@ As optional experimental feature it also has canvas rendering, for visual workfl
 
 - **Workflow Browser**: List and search all workflow definitions in your repository.
 - **Workflow Monitoring**: Live tracking of Argo Workflow executions.
+- **Resources Dashboard**: Monitor chronological CPU (core-minutes), memory, storage, and GPU consumption per workflow run with high-precision tooltip formatting.
 - **Log Viewer**: Integrated log viewing via Loki proxy.
 - **GitLab Integration**: Direct synchronization with GitLab. Every save is a commit.
 - **Commit History**: View the history of changes for every workflow file directly in the UI.
 - **Authentication**: Session-based token verification utilizing Kubernetes Service Account tokens or proxy-injected cookies.
-- **Visual Workflow Editor**: Experimental - Build complex Argo Workflows using a graphical canvas.
-- **Automatic Ingestion**: User-confirmed injection of default K8s properties (tolerations, etc.) during save.
+- **Scheduling & Resources Panel**: Easily configure default CPU/Memory requests, limits, taints constraints, and service accounts directly in the UI.
+- **Proactive Validation Guard**: Real-time warnings during saving if a workflow is missing its service account or has unsupported scheduling configurations.
 - **Docker Ready**: Fully containerized and ready for deployment.
 
 ## Architecture
 
 The project consists of two main components:
-1.  **Frontend (React)**: A modified version of `visual-argo-workflows` that handles the graphical editing, monitoring dashboards, and YAML generation.
+1.  **Frontend (React)**: A robust, simplified Code Editor that handles text editing, live validation checks, monitoring dashboards, and YAML generation.
 2.  **Backend (Node.js/Express)**: A proxy that communicates with the GitLab API and Kubernetes API. It handles token extraction for authentication and attributes commits to the authenticated user.
 
 ## Monitoring & Tracking
@@ -69,18 +70,16 @@ The easiest way to run the service is using Docker.
 | `LOKI_NAMESPACE_LABEL` | Label key for namespace in Loki. | `namespace` |
 | `ARGO_WORKFLOW_LABEL` | Label key for workflow name in Loki. | `workflows_argoproj_io_workflow` |
 | `ARGO_NAMESPACE` | Default namespace for workflows. | `default` |
-| `ARGO_TOLERATIONS` | JSON string of default tolerations to ingest on save. | - |
+| `ARGO_SERVICE_ACCOUNT` | Recommended default service account to check and set. | `default` |
+| `ARGO_AVAILABLE_TOLERATIONS` | JSON string of cluster-supported tolerations for the form dropdowns. | - |
+| `ARGO_AVAILABLE_NODE_SELECTORS` | JSON string of cluster-supported node selectors (only renders if configured). | - |
+| `ARGO_PROFILES` | JSON string of default presets available during new file template creation. | - |
 
-## How it Works: Automatic Ingestion
+## How it Works: Proactive Configuration Guard
 
-When saving a workflow, the UI will prompt the user if they want to "ingest defaults". If confirmed, the backend automatically injects infrastructure-specific properties (tolerations, service accounts, node selectors) defined in the environment variables into the YAML before committing to GitLab. This ensures workflows are optimized for the target environment without requiring manual user configuration.
-
-## How it Works: Visual State
-
-To maintain the visual layout without requiring a separate database, this tool uses a "State-in-YAML" approach. When you save a workflow:
-1. The visual graph is serialized and base64 encoded.
-2. This string is injected into the Workflow's `metadata.annotations` under the key `visual-argo-workflows/state`.
-3. When you reopen a workflow, the UI reads this annotation to restore the nodes, connections, and canvas position.
+When saving a workflow template, the frontend automatically audits the YAML code. If it detects that the service account is missing, or that the file contains node taints/selectors that are not officially supported on the cluster, it pops up a non-intrusive **Configuration Warning** alert:
+* **Review Configuration:** Opens the interactive **Scheduling & Resources** panel where users can see plain-text explanations of what resources/tolerations are, click single-action buttons to apply defaults/clear unsupported keys, or check step-level copy-pasteable YAML examples.
+* **Save Anyway:** Bypasses the warning. Users can also select "Do not warn me again" which automatically writes an ignore annotation to the YAML (`gitargo.eox.at/ignore-warnings`) to keep all subsequent saves silent.
 
 ## Development
 

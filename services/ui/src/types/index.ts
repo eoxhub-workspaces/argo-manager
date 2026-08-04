@@ -1,4 +1,3 @@
-import { AnchorId } from "@jsplumb/common";
 import { Dictionary } from "lodash";
 import { FunctionComponent, ReactNode } from "react";
 import { NodeGroupType } from "./enums";
@@ -78,11 +77,6 @@ export interface IGroupNode extends INodeItem {
 export interface IGraphData {
   nodes: INodeItem[];
   connections: Dictionary<IFlatConnection>;
-}
-
-export interface IAnchor {
-  id: string;
-  position: AnchorId;
 }
 
 export interface ITabContext {

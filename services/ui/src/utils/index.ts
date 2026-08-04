@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from "uuid";
-import { Connection } from "@jsplumb/core";
 import toast from "react-hot-toast";
 import {
   Dictionary,
@@ -10,12 +9,7 @@ import {
   range,
   values
 } from "lodash";
-import {
-  INodeItem,
-  INodeLibraryItem,
-  INodeGroup,
-  FlatConnection
-} from "../types";
+import { INodeItem, INodeLibraryItem, INodeGroup } from "../types";
 import { ReactElement } from "react";
 
 export function ensure<T>(
@@ -114,20 +108,6 @@ export const getClientNodeItem = (
     inputs: getEndPointUuids(uniqueKey, "ip", library.noInputs),
     outputs: getEndPointUuids(uniqueKey, "op", library.noOutputs)
   };
-};
-
-export const getConnections = (connections: Connection[]): FlatConnection[] => {
-  const ret: FlatConnection[] = [];
-
-  connections.forEach((connection: Connection) => {
-    const conn = {
-      source: connection.sourceId,
-      target: connection.targetId
-    };
-    ret.push(conn);
-  });
-
-  return ret;
 };
 
 export const getClientNodesAndConnections = (
