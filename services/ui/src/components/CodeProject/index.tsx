@@ -373,37 +373,92 @@ export default function CodeProject() {
           setOriginalYaml(content);
         } else if (initialName) {
           const logicalInitialName = initialName.replace(/\.ya?ml$/i, "");
-          let baseYaml = `apiVersion: argoproj.io/v1alpha1
-kind: ${initialKind}
-metadata:
-  name: ${logicalInitialName}
-spec:
-  entrypoint: main
-  templates:
-    - name: main
-      container:
-        image: alpine:latest
-        command: [sh, -c]
-        args: ["echo Hello World"]
-`;
-          if (initialKind === "CronWorkflow") {
-            baseYaml = `apiVersion: argoproj.io/v1alpha1
-kind: CronWorkflow
-metadata:
-  name: ${logicalInitialName}
-spec:
-  schedule: "0 0 * * *"
-  workflowSpec:
-    entrypoint: main
-    templates:
-      - name: main
-        container:
-          image: alpine:latest
-          command: [sh, -c]
-          args: ["echo Hello World"]
-`;
+          const isCron = initialKind === "CronWorkflow";
+
+          const skeleton: any = {
+            apiVersion: "argoproj.io/v1alpha1",
+            kind: initialKind,
+            metadata: {
+              name: logicalInitialName
+            },
+            spec: isCron
+              ? {
+                  schedule: "0 0 * * *",
+                  workflowSpec: {
+                    entrypoint: "execute",
+                    templates: []
+                  }
+                }
+              : {
+                  entrypoint: "execute",
+                  templates: []
+                }
+          };
+
+          const spec = isCron ? skeleton.spec.workflowSpec : skeleton.spec;
+
+          // 1. Inject default Service Account
+          if (appConfig.defaults?.serviceAccount) {
+            spec.serviceAccountName = appConfig.defaults.serviceAccount;
           }
 
+          // 2. Fetch selected profile resources & tolerations
+          let selectedProfileData = null;
+          if (initialProfile && appConfig.profiles?.[initialProfile]) {
+            selectedProfileData = appConfig.profiles[initialProfile];
+          }
+
+          if (selectedProfileData) {
+            // Tolerations
+            if (selectedProfileData.tolerations) {
+              spec.tolerations = selectedProfileData.tolerations;
+            }
+          }
+
+          // 3. Create main template
+          const mainTemplate: any = {
+            name: "execute",
+            container: {
+              image: "alpine:latest",
+              command: ["sh", "-c"],
+              args: ["echo Hello World"]
+            }
+          };
+
+          if (selectedProfileData?.resources) {
+            mainTemplate.container.resources = selectedProfileData.resources;
+          }
+
+          // 4. Inject Ephemeral Volume Claim template
+          if (initialEphemeral && appConfig.ephemeralVolume) {
+            const vol = appConfig.ephemeralVolume;
+            mainTemplate.container.volumeMounts = [
+              {
+                name: vol.name,
+                mountPath: vol.mountPath
+              }
+            ];
+
+            spec.volumeClaimTemplates = [
+              {
+                metadata: {
+                  name: vol.name
+                },
+                spec: {
+                  accessModes: ["ReadWriteOnce"],
+                  resources: {
+                    requests: {
+                      storage: initialEphemeralSize || vol.storage
+                    }
+                  }
+                }
+              }
+            ];
+          }
+
+          spec.templates = [mainTemplate];
+
+          const baseYaml = YAML.stringify(skeleton);
           setYamlContent(baseYaml);
           setOriginalYaml(baseYaml);
         }
@@ -427,7 +482,7 @@ spec:
 
   const [runAfterSaveAction, setRunAfterSaveAction] = useState(false);
 
-  const hasChanges = yamlContent !== originalYaml;
+  const hasChanges = isNewWorkflow || yamlContent !== originalYaml;
 
   const handleSaveSettings = () => {
     try {
@@ -616,7 +671,7 @@ spec:
         <div className="bg-gray-50 border-b border-gray-200 p-2 flex justify-between items-center z-10">
           <div className="flex items-center space-x-2">
             <span className="text-sm font-medium text-gray-500 ml-2">
-              Code Editor Only Mode
+              Editor
             </span>
           </div>
           <div className="flex space-x-2">
