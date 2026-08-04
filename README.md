@@ -138,4 +138,16 @@ npm run lint
 npm run lint:fix
 ```
 
+## Container Security (DevSecOps)
+
+This project strictly adheres to secure, enterprise-grade container standards:
+* **Minimal Base Images**: Uses `node:20-alpine` to minimize package surface area and CVE vulnerabilities.
+* **Non-Root Execution**: Runs strictly as an unprivileged, custom user (`gitargo`, UID `10001`). Root container configurations are rejected by cluster security policies.
+* **Local Scanning (Trivy)**: Image builds should be audited locally using Trivy before release:
+  ```bash
+  docker build -t gitargo:local .
+  trivy image --severity HIGH,CRITICAL gitargo:local
+  ```
+* **Image Signing (Cosign)**: Container images are automatically signed inside the CI pipeline (`build-and-push.yaml`) using cryptographic keyless OIDC Cosign signing (`sigstore`).
+
 ## License
