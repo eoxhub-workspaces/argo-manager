@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   getExecutions,
@@ -15,6 +15,7 @@ import {
   ClockIcon,
   ArrowPathIcon,
   CommandLineIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   TrashIcon,
   StopIcon,
@@ -75,7 +76,9 @@ const parseStatusMessage = (exe: any, specificMessage?: string) => {
 
   const isWarning =
     cleanMessage.toLowerCase().includes("exceeded quota") ||
-    cleanMessage.toLowerCase().includes("pending");
+    cleanMessage.toLowerCase().includes("pending") ||
+    cleanMessage.toLowerCase().includes("initializing") ||
+    cleanMessage.toLowerCase().includes("podinitializing");
 
   return {
     text: cleanMessage,
@@ -86,6 +89,7 @@ const parseStatusMessage = (exe: any, specificMessage?: string) => {
 
 const ExecutionsView: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -507,16 +511,9 @@ const ExecutionsView: React.FC = () => {
   if (error) return <div className="p-8 text-red-500 text-center">{error}</div>;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
-      <div className="flex justify-between items-center mb-6 flex-shrink-0">
-        <h1 className="text-2xl font-bold text-[#004170]">
-          {selectedExe
-            ? selectedExe.metadata.name
-            : cronFilter
-              ? `Executions for ${cronFilter}`
-              : "Workflow Executions"}
-        </h1>
-        <div className="flex space-x-2">
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-gray-50 overflow-hidden">
+      <header className="bg-white border-b border-gray-200 px-8 py-5 flex justify-between items-center flex-shrink-0 z-10 shadow-sm">
+        <div className="flex items-center space-x-5">
           {selectedExe && (
             <button
               onClick={() => {
@@ -524,15 +521,42 @@ const ExecutionsView: React.FC = () => {
                 setLogs("");
                 setSelectedNodeId(null);
               }}
-              className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+              className="p-2 rounded-full border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm bg-white"
+              title="Back to List"
             >
-              Back to List
+              <ChevronLeftIcon className="h-5 w-5 text-[#004170]" />
             </button>
           )}
+          <div>
+            <h1
+              onClick={() => {
+                if (selectedExe) {
+                  setSelectedExe(null);
+                  setLogs("");
+                  setSelectedNodeId(null);
+                }
+                navigate("/executions");
+              }}
+              className={`text-2xl font-bold text-[#004170] ${selectedExe || cronFilter || workflowFilter ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}`}
+            >
+              {selectedExe
+                ? selectedExe.metadata.name
+                : cronFilter
+                  ? `Executions for ${cronFilter}`
+                  : "Workflow Executions"}
+            </h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {selectedExe
+                ? `Live logs, step details, and pod outputs for run: ${selectedExe.metadata.name}`
+                : "Monitor active, historical, and scheduled workflow runs"}
+            </p>
+          </div>
+        </div>
+        <div className="flex space-x-2">
           {selectedExe && selectedExe.status?.phase.includes("Loki") && (
             <button
               onClick={() => fetchLogs(selectedExe.metadata.name, "workflow")}
-              className="px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-300 rounded hover:bg-indigo-50 transition-colors flex items-center"
+              className="px-4 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-300 rounded hover:bg-indigo-50 transition-colors flex items-center shadow-sm"
             >
               <CommandLineIcon className="h-4 w-4 mr-2" />
               Refresh All Logs
@@ -540,554 +564,501 @@ const ExecutionsView: React.FC = () => {
           )}
           <button
             onClick={fetchExecutions}
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-full border border-gray-200 hover:bg-gray-50 transition-colors bg-white shadow-sm"
             title="Refresh"
           >
             <ArrowPathIcon className="h-5 w-5 text-gray-600" />
           </button>
         </div>
-      </div>
+      </header>
 
-      {!selectedExe && (
-        <div className="flex space-x-4 mb-4 flex-shrink-0 bg-gray-50 p-4 rounded-md border border-gray-200">
-          <div className="flex flex-col">
-            <label className="text-xs text-gray-500 font-medium mb-1">
-              Source Workflow
-            </label>
-            <select
-              value={uiWorkflowFilter}
-              onChange={(e) => setUiWorkflowFilter(e.target.value)}
-              className="border border-gray-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:border-[#004170] bg-white min-w-[200px]"
-            >
-              <option value="">All Workflows</option>
-              {uniqueWorkflowNames.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+      <div className="flex-1 p-8 max-w-7xl mx-auto w-full flex flex-col overflow-hidden">
+        {!selectedExe && (
+          <div className="flex space-x-4 mb-4 flex-shrink-0 bg-gray-50 p-4 rounded-md border border-gray-200">
+            <div className="flex flex-col">
+              <label className="text-xs text-gray-500 font-medium mb-1">
+                Source Workflow
+              </label>
+              <select
+                value={uiWorkflowFilter}
+                onChange={(e) => setUiWorkflowFilter(e.target.value)}
+                className="border border-gray-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:border-[#004170] bg-white min-w-[200px]"
+              >
+                <option value="">All Workflows</option>
+                {uniqueWorkflowNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col">
+              <label className="text-xs text-gray-500 font-medium mb-1">
+                Status
+              </label>
+              <select
+                value={uiPhaseFilter}
+                onChange={(e) => setUiPhaseFilter(e.target.value)}
+                className="border border-gray-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:border-[#004170] bg-white min-w-[150px]"
+              >
+                <option value="">All Statuses</option>
+                <option value="Succeeded">Succeeded</option>
+                <option value="Running">Running</option>
+                <option value="Failed">Failed</option>
+                <option value="Error">Error</option>
+                <option value="Pending">Pending</option>
+              </select>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <label className="text-xs text-gray-500 font-medium mb-1">
-              Status
-            </label>
-            <select
-              value={uiPhaseFilter}
-              onChange={(e) => setUiPhaseFilter(e.target.value)}
-              className="border border-gray-300 text-sm rounded px-3 py-1.5 focus:outline-none focus:border-[#004170] bg-white min-w-[150px]"
-            >
-              <option value="">All Statuses</option>
-              <option value="Succeeded">Succeeded</option>
-              <option value="Running">Running</option>
-              <option value="Failed">Failed</option>
-              <option value="Error">Error</option>
-              <option value="Pending">Pending</option>
-            </select>
-          </div>
-        </div>
-      )}
+        )}
 
-      {!selectedExe ? (
-        <div className="bg-white shadow overflow-y-auto sm:rounded-md border border-gray-200 flex-1">
-          <ul className="divide-y divide-gray-200">
-            {filteredExecutions.map((exe) => (
-              <li key={exe.metadata.name}>
-                <div
-                  className="px-6 py-4 flex items-center justify-between hover:bg-[#f8fbfc] transition-colors cursor-pointer"
-                  onClick={() => setSelectedExe(exe)}
-                >
-                  <div className="flex items-center min-w-0 flex-1">
-                    <div className="flex-shrink-0">
-                      {getStatusIcon(exe.status?.phase || "Pending", "h-8 w-8")}
-                    </div>
-                    <div className="ml-4 flex-1">
-                      <div className="flex items-center space-x-2">
-                        <p className="text-sm font-medium text-[#004170] truncate">
-                          {exe.metadata.name}
-                        </p>
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${
-                            exe.status?.phase === "Succeeded"
-                              ? "bg-green-100 text-green-800 border-green-200"
-                              : exe.status?.phase === "Running"
-                                ? "bg-blue-100 text-blue-800 border-blue-200"
-                                : exe.status?.phase === "Failed" ||
-                                    exe.status?.phase === "Error"
-                                  ? "bg-red-100 text-red-800 border-red-200"
-                                  : exe.status?.phase === "Pending" ||
-                                      exe.status?.phase === "PodInitializing"
-                                    ? "bg-yellow-100 text-yellow-800 border-yellow-200"
-                                    : "bg-gray-100 text-gray-800 border-gray-200"
-                          }`}
-                        >
-                          {exe.status?.phase || "Pending"}
-                        </span>
+        {!selectedExe ? (
+          <div className="bg-white shadow overflow-y-auto sm:rounded-md border border-gray-200 flex-1">
+            <ul className="divide-y divide-gray-200">
+              {filteredExecutions.map((exe) => (
+                <li key={exe.metadata.name}>
+                  <div
+                    className="px-6 py-4 flex items-center justify-between hover:bg-[#f8fbfc] transition-colors cursor-pointer"
+                    onClick={() => setSelectedExe(exe)}
+                  >
+                    <div className="flex items-center min-w-0 flex-1">
+                      <div className="flex-shrink-0">
+                        {getStatusIcon(
+                          exe.status?.phase || "Pending",
+                          "h-8 w-8"
+                        )}
                       </div>
-                      <div className="flex items-center mt-1 space-x-4">
-                        <p className="flex items-center text-xs text-gray-500">
-                          <ClockIcon className="flex-shrink-0 mr-1.5 h-3.5 w-3.5 text-gray-400" />
-                          Created:{" "}
-                          {new Date(
-                            exe.metadata.creationTimestamp
-                          ).toLocaleString()}
-                        </p>
-                      </div>
-                      {(() => {
-                        const msgObj = parseStatusMessage(exe);
-                        if (!msgObj) return null;
-                        return (
-                          <p
-                            className={`text-[10px] mt-1 italic truncate max-w-md ${
-                              msgObj.type === "warning"
-                                ? "text-yellow-600"
-                                : "text-red-600"
-                            }`}
-                            title={msgObj.original}
-                          >
-                            {msgObj.text}
+                      <div className="ml-4 flex-1">
+                        <div className="flex items-center space-x-2">
+                          <p className="text-sm font-medium text-[#004170] truncate">
+                            {exe.metadata.name}
                           </p>
-                        );
-                      })()}
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${
+                              exe.status?.phase === "Succeeded"
+                                ? "bg-green-100 text-green-800 border-green-200"
+                                : exe.status?.phase === "Running"
+                                  ? "bg-blue-100 text-blue-800 border-blue-200"
+                                  : exe.status?.phase === "Failed" ||
+                                      exe.status?.phase === "Error"
+                                    ? "bg-red-100 text-red-800 border-red-200"
+                                    : exe.status?.phase === "Pending" ||
+                                        exe.status?.phase === "PodInitializing"
+                                      ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                                      : "bg-gray-100 text-gray-800 border-gray-200"
+                            }`}
+                          >
+                            {exe.status?.phase || "Pending"}
+                          </span>
+                        </div>
+                        <div className="flex items-center mt-1 space-x-4">
+                          <p className="flex items-center text-xs text-gray-500">
+                            <ClockIcon className="flex-shrink-0 mr-1.5 h-3.5 w-3.5 text-gray-400" />
+                            Created:{" "}
+                            {new Date(
+                              exe.metadata.creationTimestamp
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+                        {(() => {
+                          const msgObj = parseStatusMessage(exe);
+                          if (!msgObj) return null;
+                          return (
+                            <p
+                              className={`text-[10px] mt-1 italic truncate max-w-md ${
+                                msgObj.type === "warning"
+                                  ? "text-yellow-600"
+                                  : "text-red-600"
+                              }`}
+                              title={msgObj.original}
+                            >
+                              {msgObj.text}
+                            </p>
+                          );
+                        })()}
+                      </div>
                     </div>
-                  </div>
-                  <div className="ml-4 flex-shrink-0 flex items-center space-x-2">
-                    {exe.status?.phase === "Running" && (
+                    <div className="ml-4 flex-shrink-0 flex items-center space-x-2">
+                      {exe.status?.phase === "Running" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTerminate(exe.metadata.name);
+                          }}
+                          className="inline-flex items-center px-3 py-1.5 border border-orange-300 shadow-sm text-xs font-medium rounded text-orange-700 bg-white hover:bg-orange-50 transition-colors z-10"
+                          title="Terminate Workflow"
+                        >
+                          <StopIcon className="h-4 w-4" aria-hidden="true" />
+                          <span className="sr-only">Terminate</span>
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleTerminate(exe.metadata.name);
+                          handleDelete(exe.metadata.name);
                         }}
-                        className="inline-flex items-center px-3 py-1.5 border border-orange-300 shadow-sm text-xs font-medium rounded text-orange-700 bg-white hover:bg-orange-50 transition-colors z-10"
-                        title="Terminate Workflow"
+                        disabled={isDeleting}
+                        className="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 transition-colors z-10"
+                        title="Delete Execution"
                       >
-                        <StopIcon className="h-4 w-4" aria-hidden="true" />
-                        <span className="sr-only">Terminate</span>
+                        <TrashIcon className="h-4 w-4" aria-hidden="true" />
+                        <span className="sr-only">Delete</span>
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+              {filteredExecutions.length === 0 && (
+                <li className="px-4 py-8 text-center text-gray-500">
+                  No executions found.
+                </li>
+              )}
+            </ul>
+          </div>
+        ) : (
+          <div className="flex flex-col flex-1 space-y-6 overflow-hidden min-h-0 pb-4">
+            <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm flex-shrink-0">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-sm text-gray-500">
+                    Status:{" "}
+                    <span className="font-semibold text-gray-900">
+                      {selectedExe.status?.phase}
+                    </span>
+                  </p>
+                  {(() => {
+                    const msgObj = parseStatusMessage(selectedExe);
+                    if (!msgObj) return null;
+                    return (
+                      <p
+                        className={`text-sm font-medium mt-2 p-2 rounded border ${
+                          msgObj.type === "warning"
+                            ? "text-yellow-700 bg-yellow-50 border-yellow-200"
+                            : "text-red-600 bg-red-50 border-red-100"
+                        }`}
+                        title={msgObj.original}
+                      >
+                        {msgObj.text}
+                      </p>
+                    );
+                  })()}
+                  <p className="text-xs text-gray-400 mt-1">
+                    Namespace: {selectedExe.metadata.namespace}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end space-y-2">
+                  <div className="text-right text-xs text-gray-400">
+                    <p>
+                      Started:{" "}
+                      {new Date(
+                        selectedExe.status?.startedAt || ""
+                      ).toLocaleString()}
+                    </p>
+                    {selectedExe.status?.finishedAt && (
+                      <p>
+                        Finished:{" "}
+                        {new Date(
+                          selectedExe.status.finishedAt
+                        ).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex space-x-2">
+                    {selectedExe.status?.phase === "Running" && (
+                      <button
+                        onClick={() =>
+                          handleTerminate(selectedExe.metadata.name)
+                        }
+                        className="inline-flex items-center px-2.5 py-1.5 border border-transparent shadow-sm text-xs font-medium rounded text-white bg-orange-600 hover:bg-orange-700 focus:outline-none transition-colors"
+                      >
+                        <StopIcon className="h-4 w-4 mr-1" aria-hidden="true" />
+                        Terminate
                       </button>
                     )}
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(exe.metadata.name);
-                      }}
+                      onClick={() => handleDelete(selectedExe.metadata.name)}
                       disabled={isDeleting}
-                      className="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 transition-colors z-10"
-                      title="Delete Execution"
+                      className="inline-flex items-center px-2.5 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 focus:outline-none transition-colors"
                     >
-                      <TrashIcon className="h-4 w-4" aria-hidden="true" />
-                      <span className="sr-only">Delete</span>
+                      <TrashIcon className="h-4 w-4 mr-1" aria-hidden="true" />
+                      Delete
                     </button>
                   </div>
                 </div>
-              </li>
-            ))}
-            {filteredExecutions.length === 0 && (
-              <li className="px-4 py-8 text-center text-gray-500">
-                No executions found.
-              </li>
-            )}
-          </ul>
-        </div>
-      ) : (
-        <div className="flex flex-col flex-1 space-y-6 overflow-hidden min-h-0 pb-4">
-          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm flex-shrink-0">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-gray-500">
-                  Status:{" "}
-                  <span className="font-semibold text-gray-900">
-                    {selectedExe.status?.phase}
-                  </span>
-                </p>
-                {(() => {
-                  const msgObj = parseStatusMessage(selectedExe);
-                  if (!msgObj) return null;
-                  return (
-                    <p
-                      className={`text-sm font-medium mt-2 p-2 rounded border ${
-                        msgObj.type === "warning"
-                          ? "text-yellow-700 bg-yellow-50 border-yellow-200"
-                          : "text-red-600 bg-red-50 border-red-100"
-                      }`}
-                      title={msgObj.original}
-                    >
-                      {msgObj.text}
-                    </p>
-                  );
-                })()}
-                <p className="text-xs text-gray-400 mt-1">
-                  Namespace: {selectedExe.metadata.namespace}
-                </p>
-              </div>
-              <div className="flex flex-col items-end space-y-2">
-                <div className="text-right text-xs text-gray-400">
-                  <p>
-                    Started:{" "}
-                    {new Date(
-                      selectedExe.status?.startedAt || ""
-                    ).toLocaleString()}
-                  </p>
-                  {selectedExe.status?.finishedAt && (
-                    <p>
-                      Finished:{" "}
-                      {new Date(selectedExe.status.finishedAt).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-                <div className="flex space-x-2">
-                  {selectedExe.status?.phase === "Running" && (
-                    <button
-                      onClick={() => handleTerminate(selectedExe.metadata.name)}
-                      className="inline-flex items-center px-2.5 py-1.5 border border-transparent shadow-sm text-xs font-medium rounded text-white bg-orange-600 hover:bg-orange-700 focus:outline-none transition-colors"
-                    >
-                      <StopIcon className="h-4 w-4 mr-1" aria-hidden="true" />
-                      Terminate
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleDelete(selectedExe.metadata.name)}
-                    disabled={isDeleting}
-                    className="inline-flex items-center px-2.5 py-1.5 border border-red-300 shadow-sm text-xs font-medium rounded text-red-700 bg-white hover:bg-red-50 focus:outline-none transition-colors"
-                  >
-                    <TrashIcon className="h-4 w-4 mr-1" aria-hidden="true" />
-                    Delete
-                  </button>
-                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex-1 flex overflow-hidden min-h-0 space-x-6 pb-2">
-            {/* Steps List */}
-            <div className="w-1/3 bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col shadow-sm min-h-0">
-              <div className="p-4 bg-gray-50 border-b border-gray-200 font-medium text-gray-700 flex-shrink-0">
-                Nodes / Steps
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <ul className="divide-y divide-gray-100">
-                  <li
-                    className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${selectedNodeId === "workflow-overview" ? "bg-blue-50" : ""}`}
-                    onClick={() => fetchLogs("workflow-overview", "overview")}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <CommandLineIcon className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm font-bold text-gray-700">
-                        Workflow Overview
-                      </span>
-                    </div>
-                  </li>
-                  {(() => {
-                    const nodes = selectedExe.status?.nodes || {};
-                    const rootNode = Object.values(nodes).find(
-                      (n: any) => n.name === selectedExe.metadata.name
-                    );
-                    if (!rootNode) return null;
+            <div className="flex-1 flex overflow-hidden min-h-0 space-x-6 pb-2">
+              {/* Steps List */}
+              <div className="w-1/3 bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col shadow-sm min-h-0">
+                <div className="p-4 bg-gray-50 border-b border-gray-200 font-medium text-gray-700 flex-shrink-0">
+                  Nodes / Steps
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <ul className="divide-y divide-gray-100">
+                    <li
+                      className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${selectedNodeId === "workflow-overview" ? "bg-blue-50" : ""}`}
+                      onClick={() => fetchLogs("workflow-overview", "overview")}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <CommandLineIcon className="h-4 w-4 text-blue-500" />
+                        <span className="text-sm font-bold text-gray-700">
+                          Workflow Overview
+                        </span>
+                      </div>
+                    </li>
+                    {(() => {
+                      const nodes = selectedExe.status?.nodes || {};
+                      const rootNode = Object.values(nodes).find(
+                        (n: any) => n.name === selectedExe.metadata.name
+                      );
+                      if (!rootNode) return null;
 
-                    const orderedNodes: any[] = [];
-                    const seen = new Set();
+                      const orderedNodes: any[] = [];
+                      const seen = new Set();
 
-                    const traverse = (id: string, depth: number) => {
-                      if (seen.has(id)) return;
-                      seen.add(id);
-                      const node = nodes[id];
-                      if (!node) return;
-                      orderedNodes.push({ ...node, id, depth });
-                      if (node.children) {
-                        node.children.forEach((childId: string) =>
-                          traverse(childId, depth + 1)
-                        );
-                      }
-                    };
-
-                    traverse((rootNode as any).id, 0);
-
-                    return orderedNodes.map((node: any) => {
-                      let cleanName = node.name.startsWith(
-                        selectedExe.metadata.name
-                      )
-                        ? node.name === selectedExe.metadata.name
-                          ? "Workflow Root"
-                          : node.name
-                              .substring(selectedExe.metadata.name.length)
-                              .replace(/^[.-]/, "")
-                        : node.name;
-
-                      // Clean up step indices (e.g. "[0].print-timestamp" -> "print-timestamp")
-                      cleanName = cleanName.replace(/^\[\d+\]\./, "");
-
-                      // Format step group names (e.g. "[0]" -> "Step Group #1")
-                      if (
-                        node.type === "StepGroup" &&
-                        /^\[\d+\]$/.test(cleanName)
-                      ) {
-                        const index = cleanName.match(/\d+/)?.[0];
-                        if (index !== undefined) {
-                          cleanName = `Step Group #${Number(index) + 1}`;
+                      const traverse = (id: string, depth: number) => {
+                        if (seen.has(id)) return;
+                        seen.add(id);
+                        const node = nodes[id];
+                        if (!node) return;
+                        orderedNodes.push({ ...node, id, depth });
+                        if (node.children) {
+                          node.children.forEach((childId: string) =>
+                            traverse(childId, depth + 1)
+                          );
                         }
-                      }
+                      };
 
-                      const artifacts = [
-                        ...(node.inputs?.artifacts || []).map((a: any) => ({
-                          ...a,
-                          _type: "input"
-                        })),
-                        ...(node.outputs?.artifacts || []).map((a: any) => ({
-                          ...a,
-                          _type: "output"
-                        }))
-                      ];
+                      traverse((rootNode as any).id, 0);
 
-                      const isRoot =
-                        selectedExe && node.id === selectedExe.metadata.name;
+                      return orderedNodes.map((node: any) => {
+                        let cleanName = node.name.startsWith(
+                          selectedExe.metadata.name
+                        )
+                          ? node.name === selectedExe.metadata.name
+                            ? "Workflow Root"
+                            : node.name
+                                .substring(selectedExe.metadata.name.length)
+                                .replace(/^[.-]/, "")
+                          : node.name;
 
-                      return (
-                        <React.Fragment key={node.id}>
-                          <li
-                            className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${selectedNodeId === node.id ? "bg-blue-50" : ""}`}
-                            style={{
-                              paddingLeft: `${node.depth * 1.5 + 0.75}rem`
-                            }}
-                            onClick={() => {
-                              setSelectedNodeId(node.id);
-                              if (isRoot) {
-                                fetchLogs(node.id, "workflow");
-                              } else if (
-                                node.type !== "StepGroup" &&
-                                node.type !== "DAG"
-                              ) {
-                                fetchLogs(node.id, "pod");
-                              } else {
-                                setLogs(`Logs are only available for actual step executions (Pods).
+                        // Clean up step indices (e.g. "[0].print-timestamp" -> "print-timestamp")
+                        cleanName = cleanName.replace(/^\[\d+\]\./, "");
+
+                        // Format step group names (e.g. "[0]" -> "Step Group #1")
+                        if (
+                          node.type === "StepGroup" &&
+                          /^\[\d+\]$/.test(cleanName)
+                        ) {
+                          const index = cleanName.match(/\d+/)?.[0];
+                          if (index !== undefined) {
+                            cleanName = `Step Group #${Number(index) + 1}`;
+                          }
+                        }
+
+                        const artifacts = [
+                          ...(node.inputs?.artifacts || []).map((a: any) => ({
+                            ...a,
+                            _type: "input"
+                          })),
+                          ...(node.outputs?.artifacts || []).map((a: any) => ({
+                            ...a,
+                            _type: "output"
+                          }))
+                        ];
+
+                        const isRoot =
+                          selectedExe && node.id === selectedExe.metadata.name;
+
+                        return (
+                          <React.Fragment key={node.id}>
+                            <li
+                              className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${selectedNodeId === node.id ? "bg-blue-50" : ""}`}
+                              style={{
+                                paddingLeft: `${node.depth * 1.5 + 0.75}rem`
+                              }}
+                              onClick={() => {
+                                setSelectedNodeId(node.id);
+                                if (isRoot) {
+                                  fetchLogs(node.id, "workflow");
+                                } else if (
+                                  node.type !== "StepGroup" &&
+                                  node.type !== "DAG"
+                                ) {
+                                  fetchLogs(node.id, "pod");
+                                } else {
+                                  setLogs(`Logs are only available for actual step executions (Pods).
 
                       Node: ${node.name}
                       Type: ${node.type}
                       Phase: ${node.phase}`);
-                              }
-                            }}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
-                                {getStatusIcon(node.phase, "h-4 w-4")}
-                                <span className="text-sm font-medium text-gray-700 truncate max-w-[200px]">
-                                  {cleanName}
-                                </span>
-                                <span className="text-[10px] text-gray-400 font-mono">
-                                  ({node.type})
-                                </span>
-                              </div>
-                              {(isRoot ||
-                                (node.type !== "StepGroup" &&
-                                  node.type !== "DAG")) && (
-                                <div className="flex space-x-1">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      fetchLogs(
-                                        node.id,
-                                        isRoot ? "workflow" : "pod"
-                                      );
-                                    }}
-                                    className="p-1 rounded hover:bg-gray-200 text-gray-500 transition-colors"
-                                    title="View Logs"
-                                  >
-                                    <CommandLineIcon className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </li>
-                          {artifacts.map((art: any, idx: number) => {
-                            const fileNameForDetection =
-                              art.path ||
-                              (art.s3 && art.s3.key) ||
-                              (art.gcs && art.gcs.key) ||
-                              art.name;
-
-                            const isImage =
-                              /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(
-                                fileNameForDetection
-                              );
-                            const isText =
-                              /\.(txt|log|json|yaml|yml|csv|md)$/i.test(
-                                fileNameForDetection
-                              );
-
-                            return (
-                              <li
-                                key={`${node.id}-art-${idx}`}
-                                className={`p-2 hover:bg-gray-50 transition-colors cursor-pointer border-l-2 border-transparent`}
-                                style={{
-                                  paddingLeft: `${(node.depth + 1) * 1.5 + 0.75}rem`
-                                }}
-                                onClick={() =>
-                                  handleArtifactClick(
-                                    selectedExe.metadata.name,
-                                    node.id,
-                                    art.name,
-                                    fileNameForDetection
-                                  )
                                 }
-                              >
-                                <div className="flex items-center justify-between group">
-                                  <div className="flex items-center space-x-2">
-                                    {isImage ? (
-                                      <PhotoIcon className="h-3.5 w-3.5 text-purple-500" />
-                                    ) : isText ? (
-                                      <DocumentTextIcon className="h-3.5 w-3.5 text-blue-500" />
-                                    ) : (
-                                      <DocumentIcon className="h-3.5 w-3.5 text-gray-400" />
-                                    )}
-                                    <div className="flex flex-col">
-                                      <span
-                                        className="text-xs text-gray-600 truncate max-w-[150px]"
-                                        title={art.name}
-                                      >
-                                        {art.name}
-                                      </span>
-                                      {fileNameForDetection !== art.name && (
-                                        <span
-                                          className="text-[9px] text-gray-400 truncate max-w-[150px]"
-                                          title={fileNameForDetection}
-                                        >
-                                          {fileNameForDetection
-                                            .split("/")
-                                            .pop()}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <span className="text-[9px] px-1 bg-gray-100 text-gray-500 rounded uppercase">
-                                      {art._type}
-                                    </span>
+                              }}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                  {getStatusIcon(node.phase, "h-4 w-4")}
+                                  <span className="text-sm font-medium text-gray-700 truncate max-w-[200px]">
+                                    {cleanName}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400 font-mono">
+                                    ({node.type})
+                                  </span>
+                                </div>
+                                {(isRoot ||
+                                  (node.type !== "StepGroup" &&
+                                    node.type !== "DAG")) && (
+                                  <div className="flex space-x-1">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        fetchLogs(
+                                          node.id,
+                                          isRoot ? "workflow" : "pod"
+                                        );
+                                      }}
+                                      className="p-1 rounded hover:bg-gray-200 text-gray-500 transition-colors"
+                                      title="View Logs"
+                                    >
+                                      <CommandLineIcon className="h-4 w-4" />
+                                    </button>
                                   </div>
-                                  <a
-                                    href={getArtifactUrl(
+                                )}
+                              </div>
+                            </li>
+                            {artifacts.map((art: any, idx: number) => {
+                              const fileNameForDetection =
+                                art.path ||
+                                (art.s3 && art.s3.key) ||
+                                (art.gcs && art.gcs.key) ||
+                                art.name;
+
+                              const isImage =
+                                /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(
+                                  fileNameForDetection
+                                );
+                              const isText =
+                                /\.(txt|log|json|yaml|yml|csv|md)$/i.test(
+                                  fileNameForDetection
+                                );
+
+                              return (
+                                <li
+                                  key={`${node.id}-art-${idx}`}
+                                  className={`p-2 hover:bg-gray-50 transition-colors cursor-pointer border-l-2 border-transparent`}
+                                  style={{
+                                    paddingLeft: `${(node.depth + 1) * 1.5 + 0.75}rem`
+                                  }}
+                                  onClick={() =>
+                                    handleArtifactClick(
                                       selectedExe.metadata.name,
                                       node.id,
-                                      art.name
-                                    )}
-                                    download={art.name}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-all"
-                                    title="Download"
-                                  >
-                                    <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-                                  </a>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </React.Fragment>
-                      );
-                    });
-                  })()}
-                </ul>
+                                      art.name,
+                                      fileNameForDetection
+                                    )
+                                  }
+                                >
+                                  <div className="flex items-center justify-between group">
+                                    <div className="flex items-center space-x-2">
+                                      {isImage ? (
+                                        <PhotoIcon className="h-3.5 w-3.5 text-purple-500" />
+                                      ) : isText ? (
+                                        <DocumentTextIcon className="h-3.5 w-3.5 text-blue-500" />
+                                      ) : (
+                                        <DocumentIcon className="h-3.5 w-3.5 text-gray-400" />
+                                      )}
+                                      <div className="flex flex-col">
+                                        <span
+                                          className="text-xs text-gray-600 truncate max-w-[150px]"
+                                          title={art.name}
+                                        >
+                                          {art.name}
+                                        </span>
+                                        {fileNameForDetection !== art.name && (
+                                          <span
+                                            className="text-[9px] text-gray-400 truncate max-w-[150px]"
+                                            title={fileNameForDetection}
+                                          >
+                                            {fileNameForDetection
+                                              .split("/")
+                                              .pop()}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-[9px] px-1 bg-gray-100 text-gray-500 rounded uppercase">
+                                        {art._type}
+                                      </span>
+                                    </div>
+                                    <a
+                                      href={getArtifactUrl(
+                                        selectedExe.metadata.name,
+                                        node.id,
+                                        art.name
+                                      )}
+                                      download={art.name}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-all"
+                                      title="Download"
+                                    >
+                                      <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+                                    </a>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </React.Fragment>
+                        );
+                      });
+                    })()}
+                  </ul>
+                </div>
               </div>
-            </div>
 
-            {/* Logs / Artifact / Details Panel */}
-            <div className="w-2/3 bg-[#1e1e1e] rounded-lg overflow-hidden flex flex-col shadow-lg border border-gray-800 min-h-0">
-              <div className="p-4 bg-gray-900 border-b border-gray-800 font-medium text-gray-300 flex justify-between items-center flex-shrink-0">
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    {selectedArtifact ? (
-                      <>
-                        <DocumentIcon className="h-4 w-4 text-indigo-400" />
-                        <span>Artifact Preview: {selectedArtifact.name}</span>
-                      </>
-                    ) : (
-                      <div className="flex bg-gray-800 p-1 rounded-md">
-                        <button
-                          onClick={() => setViewType("logs")}
-                          className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center ${viewType === "logs" ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"}`}
-                        >
-                          <CommandLineIcon className="h-3.5 w-3.5 mr-1.5" />
-                          Logs
-                        </button>
-                        <button
-                          onClick={() => setViewType("details")}
-                          className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center ${viewType === "details" ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"}`}
-                        >
-                          <ListBulletIcon className="h-3.5 w-3.5 mr-1.5" />
-                          Details
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {!selectedArtifact && viewType === "logs" && (
-                    <form onSubmit={handleLogSearch} className="relative">
-                      <input
-                        type="text"
-                        value={logQuery}
-                        onChange={(e) => setLogQuery(e.target.value)}
-                        placeholder="Filter logs..."
-                        className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500 w-32 md:w-48"
-                      />
-                      <button type="submit" className="hidden"></button>
-                    </form>
-                  )}
-                  {selectedArtifact && (
-                    <a
-                      href={getArtifactUrl(
-                        selectedArtifact.workflowName,
-                        selectedArtifact.nodeId,
-                        selectedArtifact.name
+              {/* Logs / Artifact / Details Panel */}
+              <div className="w-2/3 bg-[#1e1e1e] rounded-lg overflow-hidden flex flex-col shadow-lg border border-gray-800 min-h-0">
+                <div className="p-4 bg-gray-900 border-b border-gray-800 font-medium text-gray-300 flex justify-between items-center flex-shrink-0">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      {selectedArtifact ? (
+                        <>
+                          <DocumentIcon className="h-4 w-4 text-indigo-400" />
+                          <span>Artifact Preview: {selectedArtifact.name}</span>
+                        </>
+                      ) : (
+                        <div className="flex bg-gray-800 p-1 rounded-md">
+                          <button
+                            onClick={() => setViewType("logs")}
+                            className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center ${viewType === "logs" ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"}`}
+                          >
+                            <CommandLineIcon className="h-3.5 w-3.5 mr-1.5" />
+                            Logs
+                          </button>
+                          <button
+                            onClick={() => setViewType("details")}
+                            className={`px-3 py-1 text-xs font-medium rounded transition-colors flex items-center ${viewType === "details" ? "bg-gray-700 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"}`}
+                          >
+                            <ListBulletIcon className="h-3.5 w-3.5 mr-1.5" />
+                            Details
+                          </button>
+                        </div>
                       )}
-                      download={selectedArtifact.name}
-                      className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded border border-gray-700 flex items-center transition-colors"
-                    >
-                      <ArrowDownTrayIcon className="h-3 w-3 mr-1" />
-                      Download
-                    </a>
-                  )}
-                  {(logsLoading || artifactLoading) && (
-                    <Spinner className="w-4 h-4 text-blue-500" />
-                  )}
-                </div>
-              </div>
-              <div className="flex-1 p-4 font-mono text-xs overflow-y-auto min-h-0">
-                {selectedArtifact ? (
-                  artifactLoading ? (
-                    <div className="flex items-center space-x-2 text-gray-500">
-                      <Spinner className="w-3 h-3" />
-                      <span>Loading artifact...</span>
                     </div>
-                  ) : artifactContent ? (
-                    <div className="bg-[#111] p-4 rounded border border-gray-800 text-gray-300 overflow-x-auto whitespace-pre">
-                      {artifactContent}
-                    </div>
-                  ) : /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(
-                      selectedArtifact.fileNameForDetection || ""
-                    ) ? (
-                    <div className="flex flex-col items-center justify-center h-full bg-[#111] rounded border border-gray-800 p-4">
-                      <div
-                        className="relative border border-gray-600 bg-white"
-                        style={{
-                          backgroundImage:
-                            "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)",
-                          backgroundSize: "20px 20px",
-                          backgroundPosition:
-                            "0 0, 0 10px, 10px -10px, -10px 0px"
-                        }}
-                      >
-                        <img
-                          src={getArtifactUrl(
-                            selectedArtifact.workflowName,
-                            selectedArtifact.nodeId,
-                            selectedArtifact.name
-                          )}
-                          alt={selectedArtifact.name}
-                          className="max-w-full max-h-full object-contain shadow-2xl min-w-[50px] min-h-[50px]"
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {!selectedArtifact && viewType === "logs" && (
+                      <form onSubmit={handleLogSearch} className="relative">
+                        <input
+                          type="text"
+                          value={logQuery}
+                          onChange={(e) => setLogQuery(e.target.value)}
+                          placeholder="Filter logs..."
+                          className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500 w-32 md:w-48"
                         />
-                      </div>
-                      <p className="mt-4 text-gray-500 text-[10px]">
-                        {selectedArtifact.name}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="text-gray-500 italic p-4 text-center">
-                      Preview not available for this file type.
-                      <br />
+                        <button type="submit" className="hidden"></button>
+                      </form>
+                    )}
+                    {selectedArtifact && (
                       <a
                         href={getArtifactUrl(
                           selectedArtifact.workflowName,
@@ -1095,248 +1066,327 @@ const ExecutionsView: React.FC = () => {
                           selectedArtifact.name
                         )}
                         download={selectedArtifact.name}
-                        className="text-blue-400 hover:underline mt-2 inline-block"
+                        className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded border border-gray-700 flex items-center transition-colors"
                       >
-                        Download {selectedArtifact.name}
+                        <ArrowDownTrayIcon className="h-3 w-3 mr-1" />
+                        Download
                       </a>
-                    </div>
-                  )
-                ) : viewType === "details" ? (
-                  <div className="space-y-8 text-gray-300">
-                    {/* Execution Parameters */}
-                    <div>
-                      <h4 className="flex items-center text-sm font-bold text-blue-400 mb-4 uppercase tracking-wider">
-                        <InboxStackIcon className="w-4 h-4 mr-2" />
-                        Input Parameters
-                      </h4>
-                      {selectedExe?.spec?.arguments?.parameters ? (
-                        <div className="grid grid-cols-1 gap-2">
-                          {selectedExe.spec.arguments.parameters.map(
-                            (p: any) => (
-                              <div
-                                key={p.name}
-                                className="bg-gray-800/50 rounded p-3 border border-gray-700 flex justify-between items-center"
-                              >
-                                <span className="font-semibold text-gray-400">
-                                  {p.name}
-                                </span>
-                                <span className="text-blue-300 font-mono break-all ml-4">
-                                  {p.value}
-                                </span>
-                              </div>
-                            )
+                    )}
+                    {(logsLoading || artifactLoading) && (
+                      <Spinner className="w-4 h-4 text-blue-500" />
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 p-4 font-mono text-xs overflow-y-auto min-h-0">
+                  {selectedArtifact ? (
+                    artifactLoading ? (
+                      <div className="flex items-center space-x-2 text-gray-500">
+                        <Spinner className="w-3 h-3" />
+                        <span>Loading artifact...</span>
+                      </div>
+                    ) : artifactContent ? (
+                      <div className="bg-[#111] p-4 rounded border border-gray-800 text-gray-300 overflow-x-auto whitespace-pre">
+                        {artifactContent}
+                      </div>
+                    ) : /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(
+                        selectedArtifact.fileNameForDetection || ""
+                      ) ? (
+                      <div className="flex flex-col items-center justify-center h-full bg-[#111] rounded border border-gray-800 p-4">
+                        <div
+                          className="relative border border-gray-600 bg-white"
+                          style={{
+                            backgroundImage:
+                              "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)",
+                            backgroundSize: "20px 20px",
+                            backgroundPosition:
+                              "0 0, 0 10px, 10px -10px, -10px 0px"
+                          }}
+                        >
+                          <img
+                            src={getArtifactUrl(
+                              selectedArtifact.workflowName,
+                              selectedArtifact.nodeId,
+                              selectedArtifact.name
+                            )}
+                            alt={selectedArtifact.name}
+                            className="max-w-full max-h-full object-contain shadow-2xl min-w-[50px] min-h-[50px]"
+                          />
+                        </div>
+                        <p className="mt-4 text-gray-500 text-[10px]">
+                          {selectedArtifact.name}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-gray-500 italic p-4 text-center">
+                        Preview not available for this file type.
+                        <br />
+                        <a
+                          href={getArtifactUrl(
+                            selectedArtifact.workflowName,
+                            selectedArtifact.nodeId,
+                            selectedArtifact.name
                           )}
-                        </div>
-                      ) : (
-                        <p className="text-gray-500 italic">No parameters.</p>
-                      )}
-                    </div>
+                          download={selectedArtifact.name}
+                          className="text-blue-400 hover:underline mt-2 inline-block"
+                        >
+                          Download {selectedArtifact.name}
+                        </a>
+                      </div>
+                    )
+                  ) : viewType === "details" ? (
+                    <div className="space-y-8 text-gray-300">
+                      {/* Execution Parameters */}
+                      <div>
+                        <h4 className="flex items-center text-sm font-bold text-blue-400 mb-4 uppercase tracking-wider">
+                          <InboxStackIcon className="w-4 h-4 mr-2" />
+                          Input Parameters
+                        </h4>
+                        {selectedExe?.spec?.arguments?.parameters ? (
+                          <div className="grid grid-cols-1 gap-2">
+                            {selectedExe.spec.arguments.parameters.map(
+                              (p: any) => (
+                                <div
+                                  key={p.name}
+                                  className="bg-gray-800/50 rounded p-3 border border-gray-700 flex justify-between items-center"
+                                >
+                                  <span className="font-semibold text-gray-400">
+                                    {p.name}
+                                  </span>
+                                  <span className="text-blue-300 font-mono break-all ml-4">
+                                    {p.value}
+                                  </span>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-gray-500 italic">No parameters.</p>
+                        )}
+                      </div>
 
-                    {/* Resources Consumption */}
-                    <div>
-                      <h4 className="flex items-center text-sm font-bold text-green-400 mb-4 uppercase tracking-wider">
-                        <CpuChipIcon className="w-4 h-4 mr-2" />
-                        Resources Consumption
-                      </h4>
-                      {selectedExe?.status?.resourcesDuration ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {Object.entries(
-                            selectedExe.status.resourcesDuration
-                          ).map(([res, duration]: [string, any]) => {
-                            let formattedValue = `${duration}s`;
-                            if (duration > 3600) {
-                              formattedValue = `${(duration / 3600).toFixed(2)}h`;
-                            } else if (duration > 60) {
-                              formattedValue = `${(duration / 60).toFixed(2)}m`;
-                            }
+                      {/* Resources Consumption */}
+                      <div>
+                        <h4 className="flex items-center text-sm font-bold text-green-400 mb-4 uppercase tracking-wider">
+                          <CpuChipIcon className="w-4 h-4 mr-2" />
+                          Resources Consumption
+                        </h4>
+                        {selectedExe?.status?.resourcesDuration ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {Object.entries(
+                              selectedExe.status.resourcesDuration
+                            ).map(([res, duration]: [string, any]) => {
+                              let formattedValue = `${duration}s`;
+                              if (duration > 3600) {
+                                formattedValue = `${(duration / 3600).toFixed(2)}h`;
+                              } else if (duration > 60) {
+                                formattedValue = `${(duration / 60).toFixed(2)}m`;
+                              }
 
-                            return (
-                              <div
-                                key={res}
-                                className="bg-gray-800/50 rounded-lg p-4 border border-gray-700 flex flex-col"
-                              >
-                                <span className="text-[10px] text-gray-500 uppercase font-bold mb-1">
-                                  {res}
-                                </span>
-                                <span className="text-xl font-bold text-white font-mono">
-                                  {formattedValue}
-                                </span>
-                                <span className="text-[10px] text-gray-500 mt-1">
-                                  Total {res} duration
+                              return (
+                                <div
+                                  key={res}
+                                  className="bg-gray-800/50 rounded-lg p-4 border border-gray-700 flex flex-col"
+                                >
+                                  <span className="text-[10px] text-gray-500 uppercase font-bold mb-1">
+                                    {res}
+                                  </span>
+                                  <span className="text-xl font-bold text-white font-mono">
+                                    {formattedValue}
+                                  </span>
+                                  <span className="text-[10px] text-gray-500 mt-1">
+                                    Total {res} duration
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="bg-gray-800/30 rounded p-6 text-center border border-dashed border-gray-700">
+                            <p className="text-gray-500 italic">
+                              Resource duration metrics not yet available.
+                            </p>
+                            <p className="text-[10px] text-gray-600 mt-1">
+                              Argo calculates these upon step/workflow
+                              completion.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Node Specific Details */}
+                      {selectedNodeId &&
+                        selectedNodeId !== "workflow-overview" &&
+                        selectedExe?.status?.nodes?.[selectedNodeId] && (
+                          <div>
+                            <h4 className="flex items-center text-sm font-bold text-purple-400 mb-4 uppercase tracking-wider">
+                              <DocumentTextIcon className="w-4 h-4 mr-2" />
+                              Step Details:{" "}
+                              {selectedExe.status.nodes[selectedNodeId].name
+                                .split(".")
+                                .pop()}
+                            </h4>
+                            <div className="bg-gray-800/50 rounded p-4 border border-gray-700 space-y-3">
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Phase:</span>
+                                <span
+                                  className={`font-bold ${
+                                    selectedExe.status.nodes[selectedNodeId]
+                                      .phase === "Succeeded"
+                                      ? "text-green-400"
+                                      : selectedExe.status.nodes[selectedNodeId]
+                                            .phase === "Running"
+                                        ? "text-blue-400 font-semibold animate-pulse"
+                                        : selectedExe.status.nodes[
+                                              selectedNodeId
+                                            ].phase === "Pending" ||
+                                            selectedExe.status.nodes[
+                                              selectedNodeId
+                                            ].phase === "PodInitializing"
+                                          ? "text-yellow-400 font-semibold animate-pulse"
+                                          : "text-red-400"
+                                  }`}
+                                >
+                                  {
+                                    selectedExe.status.nodes[selectedNodeId]
+                                      .phase
+                                  }
                                 </span>
                               </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="bg-gray-800/30 rounded p-6 text-center border border-dashed border-gray-700">
-                          <p className="text-gray-500 italic">
-                            Resource duration metrics not yet available.
-                          </p>
-                          <p className="text-[10px] text-gray-600 mt-1">
-                            Argo calculates these upon step/workflow completion.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Node Specific Details */}
-                    {selectedNodeId &&
-                      selectedNodeId !== "workflow-overview" &&
-                      selectedExe?.status?.nodes?.[selectedNodeId] && (
-                        <div>
-                          <h4 className="flex items-center text-sm font-bold text-purple-400 mb-4 uppercase tracking-wider">
-                            <DocumentTextIcon className="w-4 h-4 mr-2" />
-                            Step Details:{" "}
-                            {selectedExe.status.nodes[selectedNodeId].name
-                              .split(".")
-                              .pop()}
-                          </h4>
-                          <div className="bg-gray-800/50 rounded p-4 border border-gray-700 space-y-3">
-                            <div className="flex justify-between">
-                              <span className="text-gray-500">Phase:</span>
-                              <span
-                                className={`font-bold ${
-                                  selectedExe.status.nodes[selectedNodeId]
-                                    .phase === "Succeeded"
-                                    ? "text-green-400"
-                                    : "text-orange-400"
-                                }`}
-                              >
-                                {selectedExe.status.nodes[selectedNodeId].phase}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-500">Started:</span>
-                              <span>
-                                {new Date(
-                                  selectedExe.status.nodes[selectedNodeId]
-                                    .startedAt
-                                ).toLocaleString()}
-                              </span>
-                            </div>
-                            {selectedExe.status.nodes[selectedNodeId]
-                              .finishedAt && (
                               <div className="flex justify-between">
-                                <span className="text-gray-500">Finished:</span>
+                                <span className="text-gray-500">Started:</span>
                                 <span>
                                   {new Date(
                                     selectedExe.status.nodes[selectedNodeId]
-                                      .finishedAt
+                                      .startedAt
                                   ).toLocaleString()}
                                 </span>
                               </div>
-                            )}
-                            {selectedExe.status.nodes[selectedNodeId].message &&
-                              (() => {
-                                const msgObj = parseStatusMessage(
-                                  selectedExe,
-                                  selectedExe.status.nodes[selectedNodeId]
-                                    .message
-                                );
-                                if (!msgObj) return null;
-                                return (
-                                  <div className="mt-4 pt-4 border-t border-gray-700">
-                                    <span
-                                      className={`text-xs font-bold block mb-2 ${
-                                        msgObj.type === "warning"
-                                          ? "text-yellow-400"
-                                          : "text-red-400"
-                                      }`}
-                                    >
-                                      Message:
-                                    </span>
-                                    <p
-                                      className="text-xs text-gray-300 whitespace-pre-wrap"
-                                      title={msgObj.original}
-                                    >
-                                      {msgObj.text}
-                                    </p>
-                                  </div>
-                                );
-                              })()}
-                            {selectedExe.status.nodes[selectedNodeId]
-                              .resourcesDuration && (
-                              <div className="mt-4 pt-4 border-t border-gray-700">
-                                <span className="text-xs font-bold text-gray-400 block mb-2">
-                                  Step Resource Usage:
-                                </span>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {Object.entries(
-                                    selectedExe.status.nodes[selectedNodeId]
-                                      .resourcesDuration
-                                  ).map(([res, dur]: [string, any]) => (
-                                    <div
-                                      key={res}
-                                      className="text-xs flex justify-between bg-black/20 p-2 rounded"
-                                    >
-                                      <span className="text-gray-500">
-                                        {res}:
-                                      </span>
-                                      <span className="text-white font-mono">
-                                        {dur}s
-                                      </span>
-                                    </div>
-                                  ))}
+                              {selectedExe.status.nodes[selectedNodeId]
+                                .finishedAt && (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-500">
+                                    Finished:
+                                  </span>
+                                  <span>
+                                    {new Date(
+                                      selectedExe.status.nodes[selectedNodeId]
+                                        .finishedAt
+                                    ).toLocaleString()}
+                                  </span>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                              {selectedExe.status.nodes[selectedNodeId]
+                                .message &&
+                                (() => {
+                                  const msgObj = parseStatusMessage(
+                                    selectedExe,
+                                    selectedExe.status.nodes[selectedNodeId]
+                                      .message
+                                  );
+                                  if (!msgObj) return null;
+                                  return (
+                                    <div className="mt-4 pt-4 border-t border-gray-700">
+                                      <span
+                                        className={`text-xs font-bold block mb-2 ${
+                                          msgObj.type === "warning"
+                                            ? "text-yellow-400"
+                                            : "text-red-400"
+                                        }`}
+                                      >
+                                        Message:
+                                      </span>
+                                      <p
+                                        className="text-xs text-gray-300 whitespace-pre-wrap"
+                                        title={msgObj.original}
+                                      >
+                                        {msgObj.text}
+                                      </p>
+                                    </div>
+                                  );
+                                })()}
+                              {selectedExe.status.nodes[selectedNodeId]
+                                .resourcesDuration && (
+                                <div className="mt-4 pt-4 border-t border-gray-700">
+                                  <span className="text-xs font-bold text-gray-400 block mb-2">
+                                    Step Resource Usage:
+                                  </span>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {Object.entries(
+                                      selectedExe.status.nodes[selectedNodeId]
+                                        .resourcesDuration
+                                    ).map(([res, dur]: [string, any]) => (
+                                      <div
+                                        key={res}
+                                        className="text-xs flex justify-between bg-black/20 p-2 rounded"
+                                      >
+                                        <span className="text-gray-500">
+                                          {res}:
+                                        </span>
+                                        <span className="text-white font-mono">
+                                          {dur}s
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                  </div>
-                ) : logsLoading ? (
-                  <div className="flex items-center space-x-2 text-gray-500">
-                    <Spinner className="w-3 h-3" />
-                    <span>Fetching logs...</span>
-                  </div>
-                ) : logs ? (
-                  <div className="flex flex-col whitespace-pre-wrap">
-                    {logs.split("\n").map((line, idx) => {
-                      const isSystem = [
-                        "Starting Workflow Executor",
-                        "Using executor retry strategy",
-                        "Start loading input artifacts",
-                        "No Script output reference",
-                        "Capturing script output ignored",
-                        "No output parameters",
-                        "No output artifacts",
-                        "stopping progress monitor",
-                        "Deadline monitor stopped",
-                        "Starting deadline monitor",
-                        "Main container completed",
-                        "sub-process exited",
-                        "Alloc=",
-                        "Executor initialized"
-                      ].some((phrase) => line.includes(phrase));
+                        )}
+                    </div>
+                  ) : logsLoading ? (
+                    <div className="flex items-center space-x-2 text-gray-500">
+                      <Spinner className="w-3 h-3" />
+                      <span>Fetching logs...</span>
+                    </div>
+                  ) : logs ? (
+                    <div className="flex flex-col whitespace-pre-wrap">
+                      {logs.split("\n").map((line, idx) => {
+                        const isSystem = [
+                          "Starting Workflow Executor",
+                          "Using executor retry strategy",
+                          "Start loading input artifacts",
+                          "No Script output reference",
+                          "Capturing script output ignored",
+                          "No output parameters",
+                          "No output artifacts",
+                          "stopping progress monitor",
+                          "Deadline monitor stopped",
+                          "Starting deadline monitor",
+                          "Main container completed",
+                          "sub-process exited",
+                          "Alloc=",
+                          "Executor initialized"
+                        ].some((phrase) => line.includes(phrase));
 
-                      return (
-                        <span
-                          key={idx}
-                          className={
-                            isSystem ? "text-gray-500" : "text-green-400"
-                          }
-                        >
-                          {line}
-                        </span>
-                      );
-                    })}
-                  </div>
-                ) : selectedNodeId ? (
-                  <div className="text-gray-500 italic">
-                    No logs found for this node. They may have been rotated or
-                    expired.
-                  </div>
-                ) : (
-                  <div className="text-gray-500">
-                    Select a pod node to view logs.
-                  </div>
-                )}
+                        return (
+                          <span
+                            key={idx}
+                            className={
+                              isSystem ? "text-gray-500" : "text-green-400"
+                            }
+                          >
+                            {line}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : selectedNodeId ? (
+                    <div className="text-gray-500 italic">
+                      No logs found for this node. They may have been rotated or
+                      expired.
+                    </div>
+                  ) : (
+                    <div className="text-gray-500">
+                      Select a pod node to view logs.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

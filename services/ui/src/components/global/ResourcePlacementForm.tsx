@@ -214,7 +214,7 @@ export const ResourcePlacementForm: React.FC<ResourcePlacementFormProps> = ({
           </div>
           <div className="col-span-2">
             <label className="block text-xs font-semibold text-gray-600 mb-1">
-              NVIDIA GPU Limit (Optional)
+              GPU Limit (Optional)
             </label>
             <input
               type="text"
@@ -227,75 +227,73 @@ export const ResourcePlacementForm: React.FC<ResourcePlacementFormProps> = ({
         </div>
       </div>
 
-      {/* Tolerations Selectors */}
-      <div>
-        <h4 className="text-sm font-semibold text-gray-900 border-b pb-2 mb-2">
-          Node Tolerations
-        </h4>
-        <p className="text-xs text-gray-500 mb-4 leading-relaxed">
-          Some servers in the cluster (like those with expensive GPUs) are
-          "tainted" to lock them. Selecting a toleration acts like a "key" that
-          allows your workflow tasks to run on these dedicated servers.
-        </p>
-        {availableTols.length > 0 ? (
-          <div className="space-y-2">
-            {availableTols.map((tol: any) => {
-              const isChecked = state.tolerations.some(
-                (t) => t.key === tol.key
-              );
-              return (
-                <label
-                  key={tol.key}
-                  className="flex items-center space-x-3 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => handleTolerationToggle(tol)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span className="text-sm font-semibold text-gray-800">
-                      {tol.label || tol.key}
-                    </span>
-                    <p className="text-xs text-gray-500 font-mono mt-0.5">
-                      key: {tol.key} | operator: {tol.operator || "Exists"}
-                    </p>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 italic">
-            No preconfigured tolerations available.
+      {/* Tolerations Selectors (Only shown if configured or has active tolerations) */}
+      {(availableTols.length > 0 || unsupportedTolerations.length > 0) && (
+        <div>
+          <h4 className="text-sm font-semibold text-gray-900 border-b pb-2 mb-2">
+            Node Tolerations
+          </h4>
+          <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+            Some servers in the cluster (like those with expensive GPUs) are
+            "tainted" to lock them. Selecting a toleration acts like a "key"
+            that allows your workflow tasks to run on these dedicated servers.
           </p>
-        )}
+          {availableTols.length > 0 && (
+            <div className="space-y-2">
+              {availableTols.map((tol: any) => {
+                const isChecked = state.tolerations.some(
+                  (t) => t.key === tol.key
+                );
+                return (
+                  <label
+                    key={tol.key}
+                    className="flex items-center space-x-3 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => handleTolerationToggle(tol)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-semibold text-gray-800">
+                        {tol.label || tol.key}
+                      </span>
+                      <p className="text-xs text-gray-500 font-mono mt-0.5">
+                        key: {tol.key} | operator: {tol.operator || "Exists"}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
 
-        {/* Unsupported Tolerations Warnings */}
-        {unsupportedTolerations.length > 0 && (
-          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800 space-y-2">
-            <p className="font-semibold leading-relaxed">
-              ⚠️ The following active tolerations do not seem to be officially
-              supported on this cluster:
-            </p>
-            <ul className="list-disc list-inside font-mono text-[10px] text-yellow-700 bg-white/40 p-2 rounded">
-              {unsupportedTolerations.map((t) => (
-                <li key={t.key}>
-                  key: "{t.key}" | operator: "{t.operator || "Exists"}"
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              onClick={handleRemoveUnsupportedTolerations}
-              className="px-2 py-1 bg-yellow-100 hover:bg-yellow-200 rounded font-semibold text-yellow-900 transition-colors border border-yellow-300"
-            >
-              Remove Unsupported Tolerations
-            </button>
-          </div>
-        )}
-      </div>
+          {/* Unsupported Tolerations Warnings */}
+          {unsupportedTolerations.length > 0 && (
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800 space-y-2">
+              <p className="font-semibold leading-relaxed">
+                ⚠️ The following active tolerations do not seem to be officially
+                supported on this cluster:
+              </p>
+              <ul className="list-disc list-inside font-mono text-[10px] text-yellow-700 bg-white/40 p-2 rounded">
+                {unsupportedTolerations.map((t) => (
+                  <li key={t.key}>
+                    key: "{t.key}" | operator: "{t.operator || "Exists"}"
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={handleRemoveUnsupportedTolerations}
+                className="px-2 py-1 bg-yellow-100 hover:bg-yellow-200 rounded font-semibold text-yellow-900 transition-colors border border-yellow-300"
+              >
+                Remove Unsupported Tolerations
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Node Selectors (Only shown if configured in backend) */}
       {availableSelectors.length > 0 && (

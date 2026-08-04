@@ -1,4 +1,4 @@
-import { ChevronLeftIcon, DocumentIcon } from "@heroicons/react/24/outline";
+import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import { Link } from "react-router-dom";
 
 interface HeaderProps {
@@ -7,23 +7,26 @@ interface HeaderProps {
 
 const Header = ({ name }: HeaderProps) => {
   return (
-    <>
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center bg-white shadow-sm">
+    <div className="px-8 py-5 border-b border-gray-200 bg-white flex items-center justify-between">
+      <div className="flex items-center space-x-5">
         <Link
           to="/"
-          className="mr-4 p-2 rounded-full hover:bg-gray-100 transition-colors"
+          className="p-2 rounded-full border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
           title="Back to Workflows"
         >
-          <ChevronLeftIcon className="h-6 w-6 text-gray-600" />
+          <ChevronLeftIcon className="h-5 w-5 text-[#004170]" />
         </Link>
-        <div className="flex items-center space-x-2">
-          <DocumentIcon className="h-5 w-5 text-[#004170]" />
-          <h2 className="text-lg font-semibold text-gray-800">
-            {name || "New Workflow"}
-          </h2>
+        <div>
+          <h1 className="text-2xl font-bold text-[#004170] hover:opacity-80 transition-opacity">
+            <Link to="/">{name || "New Workflow"}</Link>
+          </h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Configure template metadata, write YAML definitions, track
+            executions, and manage cluster resources
+          </p>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

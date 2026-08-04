@@ -201,13 +201,22 @@ const DEFAULT_PROFILES = {
   }
 };
 
+// Helper to safely parse JSON strings from environment, stripping trailing commas
+const parseEnvJson = (envVal, defaultVal) => {
+  if (!envVal) return defaultVal;
+  try {
+    // Strip trailing commas from JSON arrays/objects to make it robust against typos
+    const cleanStr = envVal.replace(/,(\s*[\]}])/g, "$1");
+    return JSON.parse(cleanStr);
+  } catch (e) {
+    console.error(`Failed to parse JSON env value, using default:`, e.message);
+    return defaultVal;
+  }
+};
+
 let ARGO_PROFILES = DEFAULT_PROFILES;
 if (process.env.ARGO_PROFILES) {
-  try {
-    ARGO_PROFILES = JSON.parse(process.env.ARGO_PROFILES);
-  } catch (e) {
-    console.error("Failed to parse ARGO_PROFILES from environment, using defaults.", e);
-  }
+  ARGO_PROFILES = parseEnvJson(process.env.ARGO_PROFILES, DEFAULT_PROFILES);
 }
 
 const DEFAULT_TOLERATIONS = [
@@ -215,28 +224,16 @@ const DEFAULT_TOLERATIONS = [
   { key: "dedicated", operator: "Equal", value: "high-mem", effect: "NoSchedule", label: "High-Memory Dedicated Pool" }
 ];
 
-const DEFAULT_NODE_SELECTORS = [
-  { key: "kubernetes.io/arch", value: "amd64", label: "Intel/AMD x86_64" },
-  { key: "kubernetes.io/arch", value: "arm64", label: "Apple Silicon/ARM64" },
-  { key: "topology.kubernetes.io/zone", value: "eu-central-1a", label: "EU Central Zone 1A" }
-];
+const DEFAULT_NODE_SELECTORS = [];
 
 let ARGO_AVAILABLE_TOLERATIONS = DEFAULT_TOLERATIONS;
 if (process.env.ARGO_AVAILABLE_TOLERATIONS) {
-  try {
-    ARGO_AVAILABLE_TOLERATIONS = JSON.parse(process.env.ARGO_AVAILABLE_TOLERATIONS);
-  } catch (e) {
-    console.error("Failed to parse ARGO_AVAILABLE_TOLERATIONS from environment, using defaults.", e);
-  }
+  ARGO_AVAILABLE_TOLERATIONS = parseEnvJson(process.env.ARGO_AVAILABLE_TOLERATIONS, DEFAULT_TOLERATIONS);
 }
 
 let ARGO_AVAILABLE_NODE_SELECTORS = DEFAULT_NODE_SELECTORS;
 if (process.env.ARGO_AVAILABLE_NODE_SELECTORS) {
-  try {
-    ARGO_AVAILABLE_NODE_SELECTORS = JSON.parse(process.env.ARGO_AVAILABLE_NODE_SELECTORS);
-  } catch (e) {
-    console.error("Failed to parse ARGO_AVAILABLE_NODE_SELECTORS from environment, using defaults.", e);
-  }
+  ARGO_AVAILABLE_NODE_SELECTORS = parseEnvJson(process.env.ARGO_AVAILABLE_NODE_SELECTORS, DEFAULT_NODE_SELECTORS);
 }
 
 const EPHEMERAL_VOLUME_CONFIG = {

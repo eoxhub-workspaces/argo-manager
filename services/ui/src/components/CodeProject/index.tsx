@@ -413,6 +413,10 @@ export default function CodeProject() {
             if (selectedProfileData.tolerations) {
               spec.tolerations = selectedProfileData.tolerations;
             }
+            // Node Selector
+            if (selectedProfileData.nodeSelector) {
+              spec.nodeSelector = selectedProfileData.nodeSelector;
+            }
           }
 
           // 3. Create main template

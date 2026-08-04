@@ -138,30 +138,31 @@ export const NewWorkflowModal: React.FC<INewWorkflowModalProps> = ({
                   </select>
                 </div>
 
-                <div className="mb-4 border-t pt-4">
-                  <div className="flex items-center mb-2">
-                    <label className="block text-gray-700 text-sm font-bold">
-                      Resource Profile
-                    </label>
-                    <InfoButton text="Pre-configured resource limits (CPU/Memory) and node tolerations for the workflow tasks." />
-                  </div>
-                  <select
-                    value={profile}
-                    onChange={(e) => setProfile(e.target.value)}
-                    className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-white text-sm"
-                  >
-                    <option value="">None (Default)</option>
-                    {config &&
-                      Object.entries(config.profiles).map(([id, p]) => (
+                {config && Object.keys(config.profiles).length > 0 && (
+                  <div className="mb-4 border-t pt-4">
+                    <div className="flex items-center mb-2">
+                      <label className="block text-gray-700 text-sm font-bold">
+                        Resource Profile
+                      </label>
+                      <InfoButton text="Pre-configured resource limits (CPU/Memory) and node tolerations for the workflow tasks." />
+                    </div>
+                    <select
+                      value={profile}
+                      onChange={(e) => setProfile(e.target.value)}
+                      className="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-white text-sm"
+                    >
+                      <option value="">None (Default)</option>
+                      {Object.entries(config.profiles).map(([id, p]) => (
                         <option key={id} value={id}>
                           {p.label}
                         </option>
                       ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Pre-configured resource limits and tolerations.
-                  </p>
-                </div>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Pre-configured resource limits and tolerations.
+                    </p>
+                  </div>
+                )}
 
                 <div className="mb-4">
                   <div className="flex items-center">

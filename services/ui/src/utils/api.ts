@@ -73,6 +73,7 @@ export interface AppConfig {
       label: string;
       resources: any;
       tolerations?: any[];
+      nodeSelector?: Record<string, string>;
     }
   >;
   availableTolerations?: any[];
